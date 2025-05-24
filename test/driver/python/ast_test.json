@@ -1,0 +1,89 @@
+{
+  "scopes": [
+    {
+      "declarations": [],
+      "expressions": [0, 1, 4]
+    },
+    {
+      "declarations": [],
+      "expressions": [2]
+    },
+    {
+      "declarations": [],
+      "expressions": [3]
+    }
+  ],
+  "declarations": [],
+  "expressions": [
+    {
+      "kind": "Assign",
+      "type": -1,
+      "fields": [
+        { "i": true, "t": 0, "v": "x" },
+        { "i": false, "t": 1, "v": 42 }
+      ],
+      "scope": -1,
+      "scopeElse": -1
+    },
+    {
+      "kind": "If",
+      "type": -1,
+      "fields": [
+        { "i": false, "t": 4, "v": 5 }
+      ],
+      "scope": 1,
+      "scopeElse": 2
+    },
+    {
+      "kind": "Call",
+      "type": -1,
+      "fields": [
+        { "i": true, "t": 0, "v": "print" },
+        { "i": true, "t": 0, "v": "x" }
+      ],
+      "scope": -1,
+      "scopeElse": -1
+    },
+    {
+      "kind": "Assign",
+      "type": -1,
+      "fields": [
+        { "i": true, "t": 0, "v": "y" },
+        { "i": false, "t": 4, "v": 6 }
+      ],
+      "scope": -1,
+      "scopeElse": -1
+    },
+    {
+      "kind": "Return",
+      "type": -1,
+      "fields": [
+        { "i": true, "t": 0, "v": "y" }
+      ],
+      "scope": -1,
+      "scopeElse": -1
+    },
+    {
+      "kind": "BinaryOp",
+      "type": -1,
+      "fields": [
+        { "i": true, "t": 0, "v": "x" },
+        { "i": false, "t": 0, "v": ">" },
+        { "i": false, "t": 1, "v": 0 }
+      ],
+      "scope": -1,
+      "scopeElse": -1
+    },
+    {
+      "kind": "BinaryOp",
+      "type": -1,
+      "fields": [
+        { "i": true, "t": 0, "v": "x" },
+        { "i": false, "t": 0, "v": "+" },
+        { "i": false, "t": 1, "v": 1 }
+      ],
+      "scope": -1,
+      "scopeElse": -1
+    }
+  ]
+}

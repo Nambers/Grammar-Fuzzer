@@ -1,0 +1,11 @@
+*
+!.gitignore
+!src
+!src/**
+!test
+!test/**
+!scripts
+!scripts/**
+!*.sh
+!CMakeLists.txt
+!readme.md
