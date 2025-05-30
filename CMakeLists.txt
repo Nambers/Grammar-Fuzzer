@@ -19,6 +19,6 @@ target_include_directories(pyFuzzer PRIVATE ${CMAKE_SOURCE_DIR}/src ${Python3_IN
 target_link_libraries(pyFuzzer PRIVATE ${Python3_LIBRARIES} nlohmann_json::nlohmann_json)
 
 target_compile_options(pyFuzzer PRIVATE -g -fno-omit-frame-pointer -flto)
-target_link_options(pyFuzzer PRIVATE -fsanitize=address,undefined,fuzzer-no-link -flto -fsanitize-coverage=inline-8bit-counters)
+target_link_options(pyFuzzer PRIVATE -fsanitize=address,undefined,fuzzer-no-link -flto -fsanitize-coverage=trace-pc-guard)
 
 add_subdirectory(test)

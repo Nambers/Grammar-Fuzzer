@@ -82,6 +82,8 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ASTNodeKind,
 							  {ASTNodeKind::Reflect, "Reflect"}});
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTNode, kind, fields, scope, type);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTScope, declarations, expressions);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(FunctionSignature, paramTypes, selfType,
+								   returnType);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AST, scopes, declarations, expressions);
 
 }; // namespace FuzzingAST

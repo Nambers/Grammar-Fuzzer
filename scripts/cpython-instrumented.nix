@@ -14,12 +14,12 @@ let
     "-O1"
     "-fsanitize=fuzzer-no-link,address,undefined"
     "-fno-sanitize=function,alignment"
-    "-fsanitize-coverage=inline-8bit-counters,trace-pc-guard"
+    "-fsanitize-coverage=trace-pc-guard"
   ];
 
   fuzzLDFlags = pkgs.lib.concatStringsSep " " [
     "-fsanitize=fuzzer-no-link,address,undefined"
-    "-fsanitize-coverage=inline-8bit-counters,trace-pc-guard"
+    "-fsanitize-coverage=trace-pc-guard"
   ];
 in pkgs.stdenv.mkDerivation {
   pname = "cpython-instrumented";

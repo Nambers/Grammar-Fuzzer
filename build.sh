@@ -29,3 +29,6 @@ USING_CORE=$(( $(nproc) - 1 ))
 
 cmake -B $BUILD_PATH .
 cmake --build $BUILD_PATH -- -j $USING_CORE
+
+python src/driver/python/builtins.py src/driver/python/builtins.json
+

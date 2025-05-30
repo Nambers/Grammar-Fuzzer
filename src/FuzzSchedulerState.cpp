@@ -4,6 +4,8 @@
 
 using namespace FuzzingAST;
 
+extern uint32_t newEdgeCnt;
+
 void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
 											size_t currentAstSize) {
 	if (gotNewEdge) {
@@ -19,18 +21,17 @@ void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
 	switch (phase) {
 	case MutationPhase::ExecutionGeneration:
 		if (noEdgeCount > execFailureThreshold()) {
+			noEdgeCount = 0;
 			if (++execStallCount == maxDeclFailures) {
 				phase = MutationPhase::FallbackOldCorpus;
-				INFO("switching to fallback phase due to execution generation "
-					 "failures\n");
-				noEdgeCount = 0;
+				// INFO("switching to fallback phase due to execution generation
+				// " 	 "failures\n");
 				execStallCount = 0;
 			} else {
-				INFO("switching to declaration mutation phase due to no new "
-					 "edge "
-					 "found\n");
+				// INFO("switching to declaration mutation phase due to no new "
+				// 	 "edge "
+				// 	 "found\n");
 				phase = MutationPhase::DeclarationMutation;
-				noEdgeCount = 0;
 			}
 		}
 		break;
@@ -45,5 +46,7 @@ void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
 }
 
 size_t FuzzingAST::FuzzSchedulerState::execFailureThreshold() const {
-	return static_cast<size_t>(std::log2(corpusSize + 4) * 10);
+	double base = std::log2(static_cast<double>(newEdgeCnt) + 4.0);
+	double adjusted = std::sqrt(base); // optional: log2(base + 1.0)
+	return static_cast<size_t>(std::clamp(adjusted * 20.0, 100.0, 2000.0));
 }

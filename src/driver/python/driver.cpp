@@ -1,120 +1,131 @@
 #include "Python.h"
 #include "ast.hpp"
 #include "driver.hpp"
+#include "log.hpp"
 #include "pythonrun.h"
 #include <iostream>
+#include <serialization.hpp>
 #include <sstream>
 
 using namespace FuzzingAST;
 
-std::string nodeToPython(const ASTNode &node, const AST &ast,
-						 int indentLevel = 0);
+void valueToPython(std::ostringstream &out, const ASTNodeValue &val,
+				   const AST &ast, int indentLevel);
 
-std::string valueToPython(const ASTNodeValue &val, const AST &ast,
-						  int indentLevel = 0) {
+void nodeToPython(std::ostringstream &out, const ASTNode &node, const AST &ast,
+				  int indentLevel);
+
+void scopeToPython(std::ostringstream &out, ScopeID sid, const AST &ast,
+				   int indentLevel);
+
+void valueToPython(std::ostringstream &out, const ASTNodeValue &val,
+				   const AST &ast, int indentLevel) {
 	if (std::holds_alternative<std::string>(val.val)) {
-		std::string s = std::get<std::string>(val.val);
-		return val.isIdentifier ? s : "\"" + s + "\"";
+		const std::string &s = std::get<std::string>(val.val);
+		if (val.isIdentifier)
+			out << s;
+		else
+			out << "\"" << s << "\"";
 	} else if (std::holds_alternative<int64_t>(val.val)) {
-		return std::to_string(std::get<int64_t>(val.val));
+		out << std::get<int64_t>(val.val);
 	} else if (std::holds_alternative<bool>(val.val)) {
-		return std::get<bool>(val.val) ? "True" : "False";
+		out << (std::get<bool>(val.val) ? "True" : "False");
 	} else if (std::holds_alternative<double>(val.val)) {
-		return std::to_string(std::get<double>(val.val));
+		out << std::get<double>(val.val);
 	} else if (std::holds_alternative<NodeID>(val.val)) {
-		NodeID id = std::get<NodeID>(val.val);
-		return nodeToPython(ast.expressions.at(id), ast, indentLevel);
+		const ASTNode &child = ast.expressions.at(std::get<NodeID>(val.val));
+		nodeToPython(out, child, ast, indentLevel);
+	} else {
+		out << "None";
 	}
-	return "None";
 }
 
-std::string scopeToPython(ScopeID sid, const AST &ast, int indentLevel);
-
-std::string nodeToPython(const ASTNode &node, const AST &ast, int indentLevel) {
-	std::ostringstream out;
+void nodeToPython(std::ostringstream &out, const ASTNode &node, const AST &ast,
+				  int indentLevel) {
 	std::string ind(indentLevel * 4, ' ');
+	out << ind;
 
 	switch (node.kind) {
 	case ASTNodeKind::DeclareVar:
-	case ASTNodeKind::Assign: {
-		std::string lhs = valueToPython(node.fields[0], ast);
-		std::string rhs = valueToPython(node.fields[1], ast);
-		out << ind << lhs << " = " << rhs;
+	case ASTNodeKind::Assign:
+		valueToPython(out, node.fields[0], ast, indentLevel);
+		out << " = ";
+		valueToPython(out, node.fields[1], ast, indentLevel);
 		break;
-	}
-	case ASTNodeKind::Return: {
-		std::string val = valueToPython(node.fields[0], ast);
-		out << ind << "return " << val;
+
+	case ASTNodeKind::Return:
+		out << "return ";
+		valueToPython(out, node.fields[0], ast, indentLevel);
 		break;
-	}
-	case ASTNodeKind::Call: {
-		std::string fn = valueToPython(node.fields[0], ast);
-		out << ind << fn << "(";
+
+	case ASTNodeKind::Call:
+		valueToPython(out, node.fields[0], ast, indentLevel);
+		out << "(";
 		for (size_t i = 1; i < node.fields.size(); ++i) {
 			if (i > 1)
 				out << ", ";
-			out << valueToPython(node.fields[i], ast);
+			valueToPython(out, node.fields[i], ast, indentLevel);
 		}
 		out << ")";
 		break;
-	}
-	case ASTNodeKind::BinaryOp: {
-		std::string lhs = valueToPython(node.fields[0], ast);
-		std::string op = std::get<std::string>(node.fields[1].val);
-		std::string rhs = valueToPython(node.fields[2], ast);
-		out << ind << lhs << " " << op << " " << rhs;
+
+	case ASTNodeKind::BinaryOp:
+		valueToPython(out, node.fields[0], ast, indentLevel);
+		out << " " << std::get<std::string>(node.fields[1].val) << " ";
+		valueToPython(out, node.fields[2], ast, indentLevel);
 		break;
-	}
-	case ASTNodeKind::UnaryOp: {
-		std::string op = std::get<std::string>(node.fields[0].val);
-		std::string expr = valueToPython(node.fields[1], ast);
-		out << ind << op << expr;
+
+	case ASTNodeKind::UnaryOp:
+		out << std::get<std::string>(node.fields[0].val);
+		valueToPython(out, node.fields[1], ast, indentLevel);
 		break;
-	}
+
 	case ASTNodeKind::Literal:
-	case ASTNodeKind::Variable: {
-		out << ind << valueToPython(node.fields[0], ast);
+	case ASTNodeKind::Variable:
+		valueToPython(out, node.fields[0], ast, indentLevel);
 		break;
-	}
+
 	default:
-		out << ind << "# unsupported kind " << static_cast<int>(node.kind)
-			<< "\n";
+		out << "# unsupported kind " << static_cast<int>(node.kind);
 		break;
 	}
-	return out.str();
+	out << "\n";
 }
 
-std::string scopeToPython(ScopeID sid, const AST &ast, int indentLevel) {
-	if (sid == -1) {
-		return "";
-	}
-	std::ostringstream out;
+void scopeToPython(std::ostringstream &out, ScopeID sid, const AST &ast,
+				   int indentLevel) {
+	if (sid == -1)
+		return;
+
 	const ASTScope &scope = ast.scopes[sid];
+	bool empty = true;
+
 	for (NodeID id : scope.declarations) {
-		out << nodeToPython(ast.declarations[id], ast, indentLevel) << "\n";
+		nodeToPython(out, ast.declarations.at(id), ast, indentLevel);
+		empty = false;
 	}
 	for (NodeID id : scope.expressions) {
-		out << nodeToPython(ast.expressions[id], ast, indentLevel) << "\n";
+		nodeToPython(out, ast.expressions.at(id), ast, indentLevel);
+		empty = false;
 	}
-	if (out.str().empty()) {
-		std::string ind(indentLevel * 4, ' ');
-		out << ind << "pass\n";
-	}
-	return out.str();
-}
 
-static PyObject *globalModule = nullptr;
+	if (empty) {
+		out << std::string(indentLevel * 4, ' ') << "pass\n";
+	}
+}
 
 int FuzzingAST::runAST(const AST &ast, bool echo) {
 	std::ostringstream script;
-	script << scopeToPython(0, ast, 0);
-
+	scopeToPython(script, 0, ast, 0);
 	std::string re = script.str();
+
 	if (echo) {
 		std::cout << "[Generated Python]:\n" << re << "\n";
 	}
 
-	PyRun_String(re.c_str(), Py_file_input, globalModule, globalModule);
+	PyObject *ctx = PyModule_GetDict(PyImport_AddModule("__main__"));
+	PyRun_String(re.c_str(), Py_file_input, ctx, ctx);
+	Py_DECREF(ctx);
 	if (PyErr_Occurred()) {
 #ifndef QUIET
 		PyErr_Print();
@@ -124,17 +135,50 @@ int FuzzingAST::runAST(const AST &ast, bool echo) {
 	return 0;
 }
 
+static FILE *driverPyFile = nullptr;
+
 int FuzzingAST::initialize(int *argc, char ***argv) {
+	driverPyFile = fopen("driver.py", "r");
 	Py_Initialize();
-	globalModule = PyModule_GetDict(PyImport_AddModule("__main__"));
 	return 0;
 }
 
 int FuzzingAST::finalize() {
-	if (globalModule) {
-		Py_DECREF(globalModule);
-		globalModule = nullptr;
+	if (driverPyFile) {
+		fclose(driverPyFile);
+		driverPyFile = nullptr;
 	}
 	Py_Finalize();
 	return 0;
+}
+
+void FuzzingAST::loadBuiltinsFuncs(
+	std::unordered_map<std::string, FunctionSignature> &funcSignatures) {
+	FILE *file = fopen("builtins.json", "r");
+	if (!file) {
+		PANIC("Failed to open builtins.json, run build.sh to generate it.");
+	}
+	nlohmann::json j = nlohmann::json::parse(file);
+	fclose(file);
+	funcSignatures =
+		j.get<std::unordered_map<std::string, FunctionSignature>>();
+}
+
+void FuzzingAST::reflectObject(ASTData &data, ScopeID sid) {
+	std::ostringstream script;
+
+	const ASTScope &scope = data.ast.scopes[sid];
+	bool empty = true;
+
+	for (NodeID id : scope.declarations) {
+		nodeToPython(script, data.ast.declarations.at(id), data.ast, 0);
+		empty = false;
+	}
+
+	std::string re = script.str();
+
+	PyObject *ctx = PyModule_GetDict(PyImport_AddModule("__main__"));
+	PyRun_String(re.c_str(), Py_file_input, ctx, ctx);
+	PyRun_File(driverPyFile, "driver.py", Py_file_input, ctx, ctx);
+	PyObject *rawJson = PyObject_GetAttrString(ctx, "result");
 }

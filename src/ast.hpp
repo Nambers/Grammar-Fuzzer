@@ -32,8 +32,6 @@ enum class ASTNodeKind {
 constexpr ASTNodeKind DECL_NODE_END = ASTNodeKind::Import;
 constexpr ASTNodeKind EXEC_NODE_START = ASTNodeKind::Assign;
 
-enum class ASTNodeValueKind { IDENTIFIER, NORMAL };
-
 class ASTNodeValue {
   public:
 	bool isIdentifier = false;
@@ -55,29 +53,32 @@ class ASTScope {
 	std::vector<NodeID> expressions;
 };
 
+class FunctionSignature {
+  public:
+	std::vector<TypeID> paramTypes;
+	TypeID selfType = -1; // for methods, the type of the class
+	TypeID returnType = -1;
+};
+
 class AST {
   public:
 	std::vector<ASTScope> scopes;
 	std::vector<ASTNode> declarations;
 	std::vector<ASTNode> expressions;
+	std::vector<std::string> types;
+	std::unordered_map<std::string, FunctionSignature> funcSignatures;
 
+	// generate main block
 	AST() : scopes({ASTScope()}) {}
 };
-
-AST deepCopyAST(const AST &ast);
 
 class ASTData {
   public:
 	AST ast;
 
 	ASTData() = default;
-	ASTData(const ASTData &other) { ast = other.ast; };
-	ASTData &operator=(const ASTData &other) {
-		if (this != &other) {
-			ast = other.ast;
-		}
-		return *this;
-	}
+	ASTData(const ASTData &other) = default;
+	ASTData &operator=(const ASTData &other) = default;
 };
 }; // namespace FuzzingAST
 
