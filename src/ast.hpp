@@ -1,6 +1,7 @@
 #ifndef AST_HPP
 #define AST_HPP
 
+#include <array>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -25,8 +26,6 @@ enum class ASTNodeKind {
 	Variable,	// x
 	BinaryOp,	// x + y
 	UnaryOp,	// -x
-	If,			// if cond: ...
-	While,		// while cond: ...
 	Reflect		// reflectObject(x)
 };
 
@@ -48,7 +47,6 @@ class ASTNode {
 	TypeID type = -1;
 	std::vector<ASTNodeValue> fields;
 	ScopeID scope = -1;
-	ScopeID scopeElse = -1;
 };
 
 class ASTScope {
@@ -73,10 +71,10 @@ class ASTData {
 	AST ast;
 
 	ASTData() = default;
-	ASTData(const ASTData &other) : ast(deepCopyAST(other.ast)) {};
+	ASTData(const ASTData &other) { ast = other.ast; };
 	ASTData &operator=(const ASTData &other) {
 		if (this != &other) {
-			ast = deepCopyAST(other.ast);
+			ast = other.ast;
 		}
 		return *this;
 	}

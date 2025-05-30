@@ -79,10 +79,8 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ASTNodeKind,
 							  {ASTNodeKind::Variable, "Variable"},
 							  {ASTNodeKind::BinaryOp, "BinaryOp"},
 							  {ASTNodeKind::UnaryOp, "UnaryOp"},
-							  {ASTNodeKind::If, "If"},
-							  {ASTNodeKind::While, "While"},
 							  {ASTNodeKind::Reflect, "Reflect"}});
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTNode, kind, fields, scope, scopeElse, type);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTNode, kind, fields, scope, type);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTScope, declarations, expressions);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AST, scopes, declarations, expressions);
 

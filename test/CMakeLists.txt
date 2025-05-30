@@ -5,8 +5,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(nlohmann_json 3.12.0 REQUIRED)
-find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-
+find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 set(AST_SOURCES
   ${PROJECT_SOURCE_DIR}/../src/driver/python/driver.cpp

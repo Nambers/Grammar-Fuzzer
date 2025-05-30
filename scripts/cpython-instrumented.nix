@@ -8,6 +8,19 @@ let
     rev = "v${version}";
     sha256 = "sha256-GERYjuSqBDj/tYYv5sJTgNeTX2p/LjOulH4PDsWx7Hg=";
   };
+  fuzzCFlags = pkgs.lib.concatStringsSep " " [
+    "-g"
+    "-fno-omit-frame-pointer"
+    "-O1"
+    "-fsanitize=fuzzer-no-link,address,undefined"
+    "-fno-sanitize=function,alignment"
+    "-fsanitize-coverage=inline-8bit-counters,trace-pc-guard"
+  ];
+
+  fuzzLDFlags = pkgs.lib.concatStringsSep " " [
+    "-fsanitize=fuzzer-no-link,address,undefined"
+    "-fsanitize-coverage=inline-8bit-counters,trace-pc-guard"
+  ];
 in pkgs.stdenv.mkDerivation {
   pname = "cpython-instrumented";
   inherit version;
@@ -40,14 +53,23 @@ in pkgs.stdenv.mkDerivation {
     "ac_cv_func_lchmod=no"
   ];
 
+  postPatch = ''
+    echo "Appending sanitizer coverage flags to Makefile.pre.in..."
+
+    echo 'CFLAGS := ${fuzzCFlags} $(CFLAGS)' >> Makefile.pre.in
+
+    echo 'LDFLAGS := ${fuzzLDFlags} $(LDFLAGS)' >> Makefile.pre.in
+  '';
+
+
   passthru.pipSupport = false;
 
   preConfigure = ''
     export ASAN_OPTIONS='detect_leaks=0';
     export CC=clang
     export CXX=clang++
-    export CFLAGS="-g -fno-omit-frame-pointer -fsanitize=fuzzer-no-link,address,undefined -O1 -I${pkgs.libxcrypt}/include -fno-sanitize=function,alignment"
-    export LDFLAGS="-fsanitize=fuzzer-no-link,address,undefined -L${pkgs.libxcrypt}/lib -L${pkgs.llvmPackages.compiler-rt-libc}/lib/linux"
+    export CFLAGS=" -I${pkgs.libxcrypt}/include"
+    export LDFLAGS="-L${pkgs.libxcrypt}/lib -L${pkgs.llvmPackages.compiler-rt-libc}/lib/linux"
     export LIBS=-L${pkgs.libxcrypt}/lib
   '';
 

@@ -6,6 +6,7 @@
 namespace FuzzingAST {
 int runAST(const AST &, bool echo = false);
 int initialize(int *, char ***);
+int finalize();
 void reflectObject();
 } // namespace FuzzingAST
 

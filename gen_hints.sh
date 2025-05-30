@@ -5,14 +5,18 @@ set -e
 # setup environment and type hints for vscode
 ###
 
+if ! echo "$PATH" | grep -q '/nix/store'; then
+    echo "This script is intended to be run inside a Nix shell."
+    echo "Use gen_hints.sh"
+    exit 1
+fi
+
 if [ ! -d ".vscode" ]; then
     mkdir .vscode
 fi
 
 WORK_DIR=$(readlink -f .)
 SCRIPT_DIR=$(readlink -f ./scripts)
-CPYTHON_INCLUDE_PATH=$(nix-shell --pure --command "echo \$CPYTHON_INCLUDE_PATH" $SCRIPT_DIR/cpython.nix)
-CLANG_BIN=$(nix-shell --pure --command "echo \$CLANG_BIN" "$SCRIPT_DIR/cpython.nix")
 
 # VSCode IntelliSense config
 cat > "$WORK_DIR/.vscode/c_cpp_properties.json" <<EOF

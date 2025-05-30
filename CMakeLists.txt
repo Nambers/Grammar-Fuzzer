@@ -7,7 +7,7 @@ set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(nlohmann_json 3.12.0 REQUIRED)
-find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
 
 file(GLOB_RECURSE SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cpp)
@@ -18,7 +18,7 @@ add_executable(pyFuzzer
 target_include_directories(pyFuzzer PRIVATE ${CMAKE_SOURCE_DIR}/src ${Python3_INCLUDE_DIRS})
 target_link_libraries(pyFuzzer PRIVATE ${Python3_LIBRARIES} nlohmann_json::nlohmann_json)
 
-target_compile_options(pyFuzzer PRIVATE -fsanitize=address,undefined,fuzzer -g -fno-omit-frame-pointer -flto)
-target_link_options(pyFuzzer PRIVATE -fsanitize=address,undefined,fuzzer -flto)
+target_compile_options(pyFuzzer PRIVATE -g -fno-omit-frame-pointer -flto)
+target_link_options(pyFuzzer PRIVATE -fsanitize=address,undefined,fuzzer-no-link -flto -fsanitize-coverage=inline-8bit-counters)
 
 add_subdirectory(test)

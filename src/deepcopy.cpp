@@ -2,7 +2,7 @@
 
 using namespace FuzzingAST;
 
-AST deepCopyAST(const AST &ast) {
+AST FuzzingAST::deepCopyAST(const AST &ast) {
 	AST newAST;
 	newAST.scopes = ast.scopes;
 	newAST.declarations = ast.declarations;

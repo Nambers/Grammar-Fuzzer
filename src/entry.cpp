@@ -2,40 +2,23 @@
 #include "serialization.hpp"
 
 #include "driver.hpp"
+#include "fuzzer.hpp"
 #include "log.hpp"
 #include <Python.h>
+#include <atomic>
 #include <cstdlib>
 #include <fstream>
+#include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
 
 using namespace FuzzingAST;
 using json = nlohmann::json;
 
-extern "C" void __sanitizer_set_death_callback(void (*)(void));
-size_t mutateEntry(ASTData **, size_t, size_t, unsigned int);
-
-std::ifstream last_case;
-json data_backup;
-
-void __attribute__((visibility("default"))) crash_handler() {
-	ERROR("crash! last saved states\n");
-	std::string dump = data_backup.dump();
-	INFO("AST={}\n", dump);
-	_exit(1);
-}
-
-extern "C" int LLVMFuzzerTestOneInput(const ASTData **data, size_t size) {
-	if (size != sizeof(ASTData *) || *data == nullptr) {
-		// let's cook
-		return -1;
-	}
-	data_backup = (*data)->ast;
-	return runAST((*data)->ast);
-}
-
-extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv) {
+std::shared_ptr<ASTData> FuzzerInitialize(int *argc, char ***argv) {
+	std::shared_ptr<ASTData> ret = std::make_shared<ASTData>();
 	if (argc != NULL && argv != NULL) {
+		std::ifstream last_case;
 		for (int i = 0; i < *argc; i++) {
 			if (std::strncmp((*argv)[i],
 							 "-last-case=", strlen("-last-case=")) == 0) {
@@ -45,27 +28,32 @@ extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv) {
 				if (!last_case.is_open()) {
 					PANIC("Failed to open last-case file: {}\n", filename);
 				}
+				ret->ast = json::parse(last_case).get<AST>();
+				last_case.close();
 				break;
 			}
 		}
 	}
-	return initialize(argc, argv);
+	initialize(argc, argv);
+	// override potential SIGINT handler in language interpreter
+	signal(SIGINT, SIG_DFL);
+	return ret;
 }
 
-extern "C" size_t __attribute__((visibility("default")))
-LLVMFuzzerCustomMutator(ASTData **data, size_t size, size_t maxSize,
-						unsigned int seed) {
-	__sanitizer_set_death_callback(crash_handler);
-	if (size != sizeof(ASTData *) || *data == nullptr) {
-		INFO("Initializing first ASTData");
-		*data = new ASTData();
-		if (last_case.is_open()) {
-			json j;
-			last_case >> j;
-			last_case.close();
-			(*data)->ast = j.get<AST>();
-		}
-		return sizeof(ASTData *);
+extern uint8_t *snapshot;
+extern "C" void __attribute__((visibility("default"))) LLVMFuzzerFinalize() {
+	if (snapshot) {
+		delete[] snapshot;
+		snapshot = nullptr;
 	}
-	return mutateEntry(data, size, maxSize, seed);
+	finalize();
+	INFO("Fuzzer finalized.\n");
+}
+
+int main(int argc, char **argv) {
+	init_cov();
+	auto ret = FuzzerInitialize(&argc, &argv);
+	fuzzerDriver(ret);
+	LLVMFuzzerFinalize();
+	return 0;
 }

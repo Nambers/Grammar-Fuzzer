@@ -47,22 +47,6 @@ std::string nodeToPython(const ASTNode &node, const AST &ast, int indentLevel) {
 		out << ind << "return " << val;
 		break;
 	}
-	case ASTNodeKind::If: {
-		std::string cond = valueToPython(node.fields[0], ast);
-		out << ind << "if " << cond << ":\n";
-		out << scopeToPython(node.scope, ast, indentLevel + 1);
-		if (node.scopeElse != -1) {
-			out << ind << "else:\n";
-			out << scopeToPython(node.scopeElse, ast, indentLevel + 1);
-		}
-		break;
-	}
-	case ASTNodeKind::While: {
-		std::string cond = valueToPython(node.fields[0], ast);
-		out << ind << "while " << cond << ":\n";
-		out << scopeToPython(node.scope, ast, indentLevel + 1);
-		break;
-	}
 	case ASTNodeKind::Call: {
 		std::string fn = valueToPython(node.fields[0], ast);
 		out << ind << fn << "(";
@@ -93,14 +77,15 @@ std::string nodeToPython(const ASTNode &node, const AST &ast, int indentLevel) {
 		break;
 	}
 	default:
-		out << ind << "# unsupported kind";
+		out << ind << "# unsupported kind " << static_cast<int>(node.kind)
+			<< "\n";
 		break;
 	}
 	return out.str();
 }
 
 std::string scopeToPython(ScopeID sid, const AST &ast, int indentLevel) {
-	if(sid == -1) {
+	if (sid == -1) {
 		return "";
 	}
 	std::ostringstream out;
@@ -118,6 +103,8 @@ std::string scopeToPython(ScopeID sid, const AST &ast, int indentLevel) {
 	return out.str();
 }
 
+static PyObject *globalModule = nullptr;
+
 int FuzzingAST::runAST(const AST &ast, bool echo) {
 	std::ostringstream script;
 	script << scopeToPython(0, ast, 0);
@@ -127,12 +114,27 @@ int FuzzingAST::runAST(const AST &ast, bool echo) {
 		std::cout << "[Generated Python]:\n" << re << "\n";
 	}
 
-	PyRun_String(re.c_str(), Py_file_input, PyEval_GetGlobals(),
-				 PyEval_GetLocals());
+	PyRun_String(re.c_str(), Py_file_input, globalModule, globalModule);
+	if (PyErr_Occurred()) {
+#ifndef QUIET
+		PyErr_Print();
+#endif
+		return -1;
+	}
 	return 0;
 }
 
 int FuzzingAST::initialize(int *argc, char ***argv) {
 	Py_Initialize();
+	globalModule = PyModule_GetDict(PyImport_AddModule("__main__"));
+	return 0;
+}
+
+int FuzzingAST::finalize() {
+	if (globalModule) {
+		Py_DECREF(globalModule);
+		globalModule = nullptr;
+	}
+	Py_Finalize();
 	return 0;
 }
