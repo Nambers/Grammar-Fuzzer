@@ -1,7 +1,17 @@
-import builtins
 import inspect
 import json
 import sys
+import builtins
+
+BLACKLIST = {
+    "eval",
+    "exec",
+    "compile",
+    "print",
+    "input",
+    "open",
+    "help",
+}
 
 
 def normalize_type(ann):
@@ -13,19 +23,26 @@ def normalize_type(ann):
         return str(ann)
 
 
-def extract_signature(obj, clsname=None, method_type="instance"):
+def index_type(name: str, types: list[str]) -> int:
+    return types.index(name)
+
+
+def extract_signature(obj, types, clsname=None, method_type="instance"):
     try:
         sig = inspect.signature(obj)
         param_types = []
-        self_type = None if method_type == "static" else clsname
+        self_type = (
+            -1
+            if method_type == "static"
+            else index_type(clsname, types) if clsname else -1
+        )
 
         for i, (pname, param) in enumerate(sig.parameters.items()):
             ann = normalize_type(param.annotation)
+            ann = "object" if ann in ("Any", "object") else ann
             if i == 0 and pname in ("self", "cls") and method_type != "static":
-                # consume self/cls, already handled
                 continue
-            else:
-                param_types.append("object" if ann in ("Any", "object") else ann)
+            param_types.append(index_type(ann, types))
 
         return_type = normalize_type(sig.return_annotation)
         return_type = "object" if return_type in ("Any", "object") else return_type
@@ -33,18 +50,22 @@ def extract_signature(obj, clsname=None, method_type="instance"):
         return {
             "paramTypes": param_types,
             "selfType": self_type,
-            "returnType": return_type,
+            "returnType": index_type(return_type, types),
         }
 
     except Exception:
         return {
-            "paramTypes": ["object", "object"],
-            "selfType": None if method_type == "static" else clsname,
-            "returnType": "object",
+            "paramTypes": [index_type("object", types), index_type("object", types)],
+            "selfType": (
+                -1  # no return
+                if method_type == "static"
+                else index_type(clsname, types) if clsname else -1
+            ),
+            "returnType": index_type("object", types),
         }
 
 
-def collect_class_methods(cls, qualified_name=None):
+def collect_class_methods(cls, types, qualified_name=None):
     methods = {}
     if not inspect.isclass(cls):
         return methods
@@ -68,16 +89,41 @@ def collect_class_methods(cls, qualified_name=None):
             continue
 
         full_name = f"{clsname}.{attr_name}"
-        sig = extract_signature(real_func, clsname, method_type)
+        sig = extract_signature(real_func, types, clsname, method_type)
         methods[full_name] = sig
 
     return methods
 
 
-if __name__ == "__main__":
-    results = {}
-    user_ctx = dict(globals())
-    for name, obj in user_ctx.items():
+def collect_all(enable_builtins=False):
+    results = {"funcs": {}, "types": ["object"]}
+
+    if enable_builtins:
+        for name in dir(builtins):
+            obj = getattr(builtins, name)
+            if inspect.isclass(obj):
+                results["types"].append(name)
+
+    for name, obj in globals().items():
         if inspect.isclass(obj):
-            results.update(collect_class_methods(obj, name))
-    result = json.dumps(results, indent=2)
+            results["types"].append(name)
+
+    if enable_builtins:
+        for name in dir(builtins):
+            obj = getattr(builtins, name)
+            if inspect.isbuiltin(obj) and name not in BLACKLIST:
+                results["funcs"][name] = extract_signature(obj, results["types"])
+            if inspect.isclass(obj):
+                results["funcs"].update(
+                    collect_class_methods(obj, results["types"], name)
+                )
+
+    for name, obj in globals().items():
+        if inspect.isclass(obj):
+            results["funcs"].update(collect_class_methods(obj, results["types"], name))
+
+    return results
+
+
+if __name__ == "__main__":
+    result = collect_all()

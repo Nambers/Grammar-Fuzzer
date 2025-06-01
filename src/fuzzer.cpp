@@ -31,6 +31,7 @@ void crash_handler() {
 void FuzzingAST::fuzzerDriver(std::shared_ptr<ASTData> &data) {
 	FuzzSchedulerState scheduler;
 	scheduler.corpus.emplace_back(data);
+	loadBuiltinsFuncs(scheduler.builtinsFuncs, scheduler.types);
 	while (true) {
 		if (scheduler.corpus.empty()) {
 			scheduler.corpus.emplace_back(std::make_shared<ASTData>());

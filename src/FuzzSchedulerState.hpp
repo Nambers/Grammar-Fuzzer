@@ -1,9 +1,9 @@
 #ifndef FUZZSCHEDULERSTATE_HPP
 #define FUZZSCHEDULERSTATE_HPP
 
-#include <stddef.h>
-#include <memory>
 #include "ast.hpp"
+#include <memory>
+#include <stddef.h>
 
 namespace FuzzingAST {
 enum class MutationPhase {
@@ -26,6 +26,7 @@ class FuzzSchedulerState {
 	size_t maxNumDeclarations = 5;
 
 	std::unordered_map<std::string, FunctionSignature> builtinsFuncs;
+	std::vector<std::string> types;
 	FuzzSchedulerState() = default;
 
 	void update(bool gotNewEdge, size_t maxNumDeclarations);

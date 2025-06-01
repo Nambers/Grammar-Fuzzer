@@ -22,10 +22,7 @@ void valueToPython(std::ostringstream &out, const ASTNodeValue &val,
 				   const AST &ast, int indentLevel) {
 	if (std::holds_alternative<std::string>(val.val)) {
 		const std::string &s = std::get<std::string>(val.val);
-		if (val.isIdentifier)
-			out << s;
-		else
-			out << "\"" << s << "\"";
+		out << s;
 	} else if (std::holds_alternative<int64_t>(val.val)) {
 		out << std::get<int64_t>(val.val);
 	} else if (std::holds_alternative<bool>(val.val)) {
@@ -81,7 +78,6 @@ void nodeToPython(std::ostringstream &out, const ASTNode &node, const AST &ast,
 		break;
 
 	case ASTNodeKind::Literal:
-	case ASTNodeKind::Variable:
 		valueToPython(out, node.fields[0], ast, indentLevel);
 		break;
 
@@ -153,25 +149,27 @@ int FuzzingAST::finalize() {
 }
 
 void FuzzingAST::loadBuiltinsFuncs(
-	std::unordered_map<std::string, FunctionSignature> &funcSignatures) {
-	FILE *file = fopen("builtins.json", "r");
+	std::unordered_map<std::string, FunctionSignature> &funcSignatures,
+	std::vector<std::string> &types) {
+	FILE *file = fopen("./src/driver/python/builtins.json", "r");
 	if (!file) {
 		PANIC("Failed to open builtins.json, run build.sh to generate it.");
 	}
 	nlohmann::json j = nlohmann::json::parse(file);
-	fclose(file);
-	funcSignatures =
-		j.get<std::unordered_map<std::string, FunctionSignature>>();
+	auto tmp =
+		j["funcs"].get<std::unordered_map<std::string, FunctionSignature>>();
+	funcSignatures.swap(tmp);
+	auto tmp2 = j["types"].get<std::vector<std::string>>();
+	types.swap(tmp2);
 }
 
-void FuzzingAST::reflectObject(ASTData &data, ScopeID sid) {
+void FuzzingAST::reflectObject(const AST &ast, ASTScope &scope) {
 	std::ostringstream script;
 
-	const ASTScope &scope = data.ast.scopes[sid];
 	bool empty = true;
 
 	for (NodeID id : scope.declarations) {
-		nodeToPython(script, data.ast.declarations.at(id), data.ast, 0);
+		nodeToPython(script, ast.declarations.at(id), ast, 0);
 		empty = false;
 	}
 
@@ -181,4 +179,24 @@ void FuzzingAST::reflectObject(ASTData &data, ScopeID sid) {
 	PyRun_String(re.c_str(), Py_file_input, ctx, ctx);
 	PyRun_File(driverPyFile, "driver.py", Py_file_input, ctx, ctx);
 	PyObject *rawJson = PyObject_GetAttrString(ctx, "result");
+	if (!rawJson) {
+		PyErr_Print();
+		PANIC("Failed to get 'result' from driver.py");
+	}
+	if (!PyUnicode_Check(rawJson)) {
+		PyErr_Print();
+		PANIC("'result' from driver.py is not a string");
+	}
+	std::string jsonStr = PyUnicode_AsUTF8(rawJson);
+	Py_DECREF(rawJson);
+	Py_DECREF(ctx);
+	if (jsonStr.empty()) {
+		PANIC("Empty result from driver.py");
+	}
+	nlohmann::json j = nlohmann::json::parse(jsonStr);
+	auto tmp =
+		j["funcs"].get<std::unordered_map<std::string, FunctionSignature>>();
+	scope.funcSignatures.swap(tmp);
+	auto tmp2 = j["types"].get<std::vector<std::string>>();
+	scope.types.swap(tmp2);
 }

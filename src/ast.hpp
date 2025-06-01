@@ -1,7 +1,6 @@
 #ifndef AST_HPP
 #define AST_HPP
 
-#include <array>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -13,6 +12,8 @@ using NodeID = int;
 using ScopeID = int;
 using TypeID = int;
 
+constexpr size_t BUILTINS_TYPE_LEN = 150;
+
 enum class ASTNodeKind {
 	Function,	// def f(x):
 	Class,		// class A:
@@ -22,11 +23,9 @@ enum class ASTNodeKind {
 	Assign,		// x = y
 	Call,		// f(x)
 	Return,		// return x
-	Literal,	// 42, "abc"
-	Variable,	// x
 	BinaryOp,	// x + y
 	UnaryOp,	// -x
-	Reflect		// reflectObject(x)
+	Literal,	// 42, "hello", True, 3.14, x, y, z
 };
 
 constexpr ASTNodeKind DECL_NODE_END = ASTNodeKind::Import;
@@ -34,7 +33,6 @@ constexpr ASTNodeKind EXEC_NODE_START = ASTNodeKind::Assign;
 
 class ASTNodeValue {
   public:
-	bool isIdentifier = false;
 	std::variant<std::string, int64_t, bool, double, NodeID> val;
 };
 
@@ -47,12 +45,6 @@ class ASTNode {
 	ScopeID scope = -1;
 };
 
-class ASTScope {
-  public:
-	std::vector<NodeID> declarations;
-	std::vector<NodeID> expressions;
-};
-
 class FunctionSignature {
   public:
 	std::vector<TypeID> paramTypes;
@@ -60,13 +52,19 @@ class FunctionSignature {
 	TypeID returnType = -1;
 };
 
+class ASTScope {
+  public:
+	std::vector<NodeID> declarations;
+	std::vector<NodeID> expressions;
+	std::vector<std::string> types;
+	std::unordered_map<std::string, FunctionSignature> funcSignatures;
+};
+
 class AST {
   public:
 	std::vector<ASTScope> scopes;
 	std::vector<ASTNode> declarations;
 	std::vector<ASTNode> expressions;
-	std::vector<std::string> types;
-	std::unordered_map<std::string, FunctionSignature> funcSignatures;
 
 	// generate main block
 	AST() : scopes({ASTScope()}) {}

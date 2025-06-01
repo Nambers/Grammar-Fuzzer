@@ -8,7 +8,6 @@ namespace FuzzingAST {
 inline void to_json(nlohmann::json &j, const ASTNodeValue &node) {
 	// {"t": TYPE_INDEX, "v": VALUE}
 	j["t"] = node.val.index();
-	j["i"] = node.isIdentifier;
 	switch (node.val.index()) {
 	case 0:
 		j["v"] = std::get<std::string>(node.val);
@@ -30,7 +29,6 @@ inline void to_json(nlohmann::json &j, const ASTNodeValue &node) {
 
 inline void from_json(const nlohmann::json &j, ASTNodeValue &node) {
 	// {"t": TYPE_INDEX, "v": VALUE}
-	node.isIdentifier = j.at("i").template get<bool>();
 	auto index = j.at("t").template get<size_t>();
 	switch (index) {
 	case 0:
@@ -75,11 +73,9 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ASTNodeKind,
 							  {ASTNodeKind::Assign, "Assign"},
 							  {ASTNodeKind::Call, "Call"},
 							  {ASTNodeKind::Return, "Return"},
-							  {ASTNodeKind::Literal, "Literal"},
-							  {ASTNodeKind::Variable, "Variable"},
 							  {ASTNodeKind::BinaryOp, "BinaryOp"},
 							  {ASTNodeKind::UnaryOp, "UnaryOp"},
-							  {ASTNodeKind::Reflect, "Reflect"}});
+							  {ASTNodeKind::Literal, "Literal"}});
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTNode, kind, fields, scope, type);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTScope, declarations, expressions);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(FunctionSignature, paramTypes, selfType,
