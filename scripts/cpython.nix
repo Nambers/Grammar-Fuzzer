@@ -17,5 +17,6 @@ pkgs.mkShell {
     export CLANG_BIN="${pkgs.clang}/bin";
     export NIX_ENFORCE_NO_NATIVE=0;
     export CPYTHON_INCLUDE_PATH="${cpython-inst}/include";
+    export PATH="${cpython-inst}/bin:$PATH";
   '';
 }
