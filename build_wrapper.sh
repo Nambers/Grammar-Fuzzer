@@ -2,4 +2,4 @@
 
 set -e
 
-nix-shell --pure --command "./build.sh" ./scripts/cpython.nix
+nix-shell --pure --command "./build.sh" ./scripts/cpython-inst.nix

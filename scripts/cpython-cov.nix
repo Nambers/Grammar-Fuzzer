@@ -1,6 +1,6 @@
 let
   pkgs = import <nixpkgs> {};
-  cpython-inst = import ./cpython-instrumented.nix { inherit pkgs; };
+  cpython-inst = import ./cpython-cov-pkg.nix { inherit pkgs; };
 in
 pkgs.mkShell {
   buildInputs = with pkgs; [
@@ -9,6 +9,7 @@ pkgs.mkShell {
     cmake
     cpython-inst
     ninja
+    lcov
   ];
   shellHook = ''
     export ASAN_OPTIONS='detect_leaks=0';
@@ -17,6 +18,8 @@ pkgs.mkShell {
     export CLANG_BIN="${pkgs.clang}/bin";
     export NIX_ENFORCE_NO_NATIVE=0;
     export CPYTHON_INCLUDE_PATH="${cpython-inst}/include";
+    export CPYTHON_SRC="${cpython-inst}/.build/source";
+    export CPYTHON_LIB="${cpython-inst}/lib";
     export PATH="${cpython-inst}/bin:$PATH";
   '';
 }

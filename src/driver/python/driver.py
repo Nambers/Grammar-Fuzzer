@@ -1,6 +1,5 @@
 import inspect
 import json
-import sys
 import builtins
 
 BLACKLIST = {
@@ -106,7 +105,7 @@ def collect_all(enable_builtins=False):
 
     for name, obj in globals().items():
         if inspect.isclass(obj):
-            results["types"].append(name)
+            results["types"].append(name)      
 
     if enable_builtins:
         for name in dir(builtins):
@@ -126,4 +125,5 @@ def collect_all(enable_builtins=False):
 
 
 if __name__ == "__main__":
-    result = collect_all()
+    global result
+    result = json.dumps(collect_all())

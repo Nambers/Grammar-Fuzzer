@@ -11,7 +11,7 @@ let
   fuzzCFlags = pkgs.lib.concatStringsSep " " [
     "-g"
     "-fno-omit-frame-pointer"
-    "-O1"
+    "-O2"
     "-fsanitize=fuzzer-no-link,address,undefined"
     "-fno-sanitize=function,alignment"
     "-fsanitize-coverage=trace-pc-guard"
@@ -22,12 +22,13 @@ let
     "-fsanitize-coverage=trace-pc-guard"
   ];
 in pkgs.stdenv.mkDerivation {
-  pname = "cpython-instrumented";
+  pname = "cpython-inst-pkg";
   inherit version;
   src = pythonSrc;
+  dontStrip = true;
 
   nativeBuildInputs =
-    [ pkgs.clang pkgs.llvm pkgs.pkg-config pkgs.llvmPackages.compiler-rt-libc ];
+    [ pkgs.clang pkgs.llvm pkgs.pkg-config pkgs.llvmPackages.compiler-rt-libc pkgs.keepBuildTree ];
 
   buildInputs = [
     pkgs.expat
@@ -69,7 +70,7 @@ in pkgs.stdenv.mkDerivation {
     export CC=clang
     export CXX=clang++
     export CFLAGS=" -I${pkgs.libxcrypt}/include"
-    export LDFLAGS="-L${pkgs.libxcrypt}/lib -L${pkgs.llvmPackages.compiler-rt-libc}/lib/linux"
+    export LDFLAGS="-L${pkgs.libxcrypt}/lib -L${pkgs.llvmPackages.compiler-rt-libc}/lib/linux -lclang_rt.profile-x86_64"
     export LIBS=-L${pkgs.libxcrypt}/lib
   '';
 

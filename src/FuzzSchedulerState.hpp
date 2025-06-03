@@ -15,7 +15,8 @@ class FuzzSchedulerState {
   public:
 	size_t noEdgeCount = 0;
 	size_t execStallCount = 0;
-	MutationPhase phase = MutationPhase::ExecutionGeneration;
+    // initial mutation
+	MutationPhase phase = MutationPhase::DeclarationMutation;
 	// corpus index
 	uint idx = 0;
 	std::vector<std::shared_ptr<ASTData>> corpus;
@@ -23,7 +24,7 @@ class FuzzSchedulerState {
 	// if failed to find new edge for 5 mutated declaration in a row, fallback
 	size_t maxDeclFailures = 5;
 	// max 5 variables / type declarations
-	size_t maxNumDeclarations = 5;
+	size_t maxNumDeclarations = 10;
 
 	std::unordered_map<std::string, FunctionSignature> builtinsFuncs;
 	std::vector<std::string> types;

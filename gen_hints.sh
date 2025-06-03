@@ -17,6 +17,7 @@ fi
 
 WORK_DIR=$(readlink -f .)
 SCRIPT_DIR=$(readlink -f ./scripts)
+REAL_PYTHON_INCLUDE=$(readlink -f $CPYTHON_INCLUDE_PATH/python*/);
 
 # VSCode IntelliSense config
 cat > "$WORK_DIR/.vscode/c_cpp_properties.json" <<EOF
@@ -26,11 +27,12 @@ cat > "$WORK_DIR/.vscode/c_cpp_properties.json" <<EOF
             "name": "Linux",
             "includePath": [
                 "\${workspaceFolder}/**",
-                "$CPYTHON_INCLUDE_PATH/",
-                "$CPYTHON_INCLUDE_PATH/internal"
+                "$REAL_PYTHON_INCLUDE/",
+                "$REAL_PYTHON_INCLUDE/internal"
             ],
             "defines": [],
             "compilerPath": "$CLANG_BIN/clang++",
+            "compileCommands": "build/compile_commands.json",
             "cStandard": "c23",
             "cppStandard": "c++23",
             "intelliSenseMode": "linux-clang-x64"
@@ -46,9 +48,6 @@ cat > "$WORK_DIR/.vscode/settings.json" <<EOF
     "cmake.sourceDirectory": "\${workspaceFolder}/src",
     "cmake.buildDirectory": "\${workspaceFolder}/build",
     "C_Cpp.default.compilerPath": "$CLANG_BIN/clang++",
-    "cmake.configureEnvironment": {
-        "PYTHON_PATH": "$CPYTHON_INCLUDE_PATH"
-    },
     "cmake.configureOnOpen": false
 }
 EOF
@@ -57,8 +56,8 @@ EOF
 cat > "$WORK_DIR/.clangd" <<EOF
 CompileFlags:
   Add: [
-    "-I$CPYTHON_INCLUDE_PATH",
-    "-I$CPYTHON_INCLUDE_PATH/internal",
+    "-I$REAL_PYTHON_INCLUDE",
+    "-I$REAL_PYTHON_INCLUDE/internal",
     "-ferror-limit=0"
   ]
 EOF
