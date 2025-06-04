@@ -26,9 +26,6 @@ void valueToPython(std::ostringstream &out, const ASTNodeValue &val,
         out << (std::get<bool>(val.val) ? "True" : "False");
     } else if (std::holds_alternative<double>(val.val)) {
         out << std::get<double>(val.val);
-    } else if (std::holds_alternative<NodeID>(val.val)) {
-        const ASTNode &child = ast.expressions.at(std::get<NodeID>(val.val));
-        nodeToPython(out, child, ast, ctx, indentLevel);
     } else {
         out << "None";
     }
@@ -92,16 +89,17 @@ void nodeToPython(std::ostringstream &out, const ASTNode &node, const AST &ast,
         // def fields[0](fields[2]...) -> fields[1]
         size_t paramCnt = node.fields.size() > 2 ? node.fields.size() - 2 : 0;
         out << "def " << name << '(';
-        for (size_t i = 0; i < paramCnt; ++i) {
+        for (size_t i = 0; i < paramCnt; i += 2) {
             if (i)
                 out << ", ";
-            TypeID pt =
-                static_cast<TypeID>(std::get<int64_t>(node.fields[2 + i].val));
-            out << "arg" << i << ": " << getTypeName(pt, ast, ctx);
+            std::string argName = std::get<std::string>(node.fields[2 + i].val);
+            TypeID pt = static_cast<TypeID>(
+                std::get<int64_t>(node.fields[2 + i + 1].val));
+            out << argName << ": " << getTypeName(pt, ast, ctx);
         }
         out << ")";
 
-        TypeID retType = std::get<TypeID>(node.fields[1].val);
+        TypeID retType = std::get<int64_t>(node.fields[1].val);
         if (retType != -1) {
             out << " -> " << getTypeName(retType, ast, ctx);
         }
@@ -110,8 +108,6 @@ void nodeToPython(std::ostringstream &out, const ASTNode &node, const AST &ast,
         out << std::string((indentLevel + 1) * 4, ' ') << "pass";
         break;
     }
-
-    /* ─── 类定义 ─── */
     case ASTNodeKind::Class: {
         const std::string &name = std::get<std::string>(node.fields[0].val);
 
@@ -289,8 +285,8 @@ void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,
     data->ast.scopes[0].variables[3] = 3;
 }
 
-void FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
-                               const BuiltinContext &ctx) {
+int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
+                              const BuiltinContext &ctx) {
     std::ostringstream script;
 
     bool empty = true;
@@ -301,18 +297,28 @@ void FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     }
 
     if (empty)
-        return;
+        return 0;
 
     std::string re = script.str();
+
+    PyObject *code = Py_CompileString(re.c_str(), "<ast>", Py_file_input);
+    if (PyErr_Occurred()) {
+        PyErr_Print();
+        PyErr_Clear();
+        ERROR("Failed to compile decl code block:\n{}", re);
+        return -1;
+    }
 
     PyObject *dict = PyDict_New();
     PyObject *name = PyUnicode_FromString("__main__");
     PyDict_SetItemString(dict, "__name__", name);
     PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
-    PyRun_String(re.c_str(), Py_file_input, dict, dict);
+    PyEval_EvalCode(code, dict, dict);
     if (PyErr_Occurred()) {
         PyErr_Print();
-        PANIC("Failed to run decl code block:\n{}", re);
+        PyErr_Clear();
+        ERROR("Failed to run decl code block:\n{}", re);
+        return -1;
     }
 
     PyRun_String(driverPyConent.c_str(), Py_file_input, dict, dict);
@@ -332,6 +338,7 @@ void FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     std::string jsonStr(PyUnicode_AsUTF8(rawJson));
     // DON'T DECREF
     // Py_DECREF(rawJson);
+    Py_DECREF(code);
     Py_DECREF(name);
     Py_DECREF(dict);
     if (jsonStr.empty()) {
@@ -343,4 +350,5 @@ void FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     scope.funcSignatures.swap(tmp);
     auto tmp2 = j["types"].get<std::vector<std::string>>();
     scope.types.swap(tmp2);
+    return 0;
 }

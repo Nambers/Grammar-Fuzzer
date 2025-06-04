@@ -21,9 +21,6 @@ inline void to_json(nlohmann::json &j, const ASTNodeValue &node) {
     case 3:
         j["v"] = std::get<double>(node.val);
         break;
-    case 4:
-        j["v"] = std::get<NodeID>(node.val);
-        break;
     };
 }
 
@@ -43,9 +40,7 @@ inline void from_json(const nlohmann::json &j, ASTNodeValue &node) {
     case 3:
         node.val = j.at("v").template get<double>();
         break;
-    case 4:
-        node.val = j.at("v").template get<NodeID>();
-        break;
+
     default:
         throw std::runtime_error("Invalid ASTNodeValue type");
     }
@@ -81,7 +76,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTScope, declarations, expressions,
                                    retType);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(FunctionSignature, paramTypes, selfType,
                                    returnType);
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AST, nameCnt, scopes, declarations, expressions);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AST, nameCnt, scopes, declarations,
+                                   expressions);
 
 }; // namespace FuzzingAST
 

@@ -55,7 +55,7 @@ class BuiltinContext {
 
 class ASTNodeValue {
   public:
-    std::variant<std::string, int64_t, bool, double, NodeID> val;
+    std::variant<std::string, int64_t, bool, double> val;
 };
 
 class ASTNode {

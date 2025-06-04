@@ -102,10 +102,11 @@ void FuzzingAST::fuzzerDriver(AST initAST) {
             // continue generation on current
             newData =
                 std::make_shared<ASTData>(*scheduler.corpus[scheduler.idx]);
-            generate_execution(newData);
+            generate_execution(newData, scheduler.ctx);
             // if fail to run, drop the result and do it again.
             auto cacheNewEdgeCnt = newEdgeCnt;
             if (testOneInput(newData, scheduler.ctx) == 0) {
+                // TODO sync new edge corpus with coverage instance
                 scheduler.update(newEdgeCnt > cacheNewEdgeCnt,
                                  newData->ast.declarations.size());
             }

@@ -3,6 +3,7 @@
 
 #include <format>
 #include <iostream>
+#include <signal.h>
 
 #define INFO Log::info
 #define ERROR Log::error
@@ -32,7 +33,8 @@ template <typename... Args>
 panic(std::format_string<Args...> fmt, Args &&...args) {
 	std::cerr << RED << std::format(fmt, std::forward<Args>(args)...) << RESET
 			  << std::endl;
-	abort();
+    raise(SIGINT);
+    abort();
 }
 } // namespace Log
 

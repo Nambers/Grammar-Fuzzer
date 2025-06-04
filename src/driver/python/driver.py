@@ -71,9 +71,6 @@ def collect_class_methods(cls, types, qualified_name=None):
 
     clsname = qualified_name or cls.__name__
     for attr_name, attr in cls.__dict__.items():
-        if attr_name.startswith("__") and attr_name.endswith("__"):
-            continue
-
         method_type = "instance"
         if isinstance(attr, staticmethod):
             real_func = attr.__func__

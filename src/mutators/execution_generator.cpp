@@ -17,7 +17,8 @@ void collectVar(const std::shared_ptr<ASTData> &ast, const ASTScope &scope,
 }
 
 int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
-                                         const ScopeID &scopeID) {
+                                         const ScopeID &scopeID,
+                                         const BuiltinContext &ctx) {
     constexpr int NUM_GEN = 10; // TODO
     ASTScope &scope = ast->ast.scopes[scopeID];
     scope.expressions.resize(NUM_GEN, -1);
@@ -25,29 +26,20 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
         static_cast<int>(EXEC_NODE_START), static_cast<int>(EXEC_NODE_END));
     std::uniform_int_distribution<int> pickBinaryOp(0, BINARY_OPS.size() - 1);
     std::uniform_int_distribution<int> pickUnaryOp(0, UNARY_OPS.size() - 1);
-    std::uniform_int_distribution<int> pickVar;
-    std::uniform_int_distribution<int> pickFunc;
     ASTScope *parentScope;
     int parentLastVar = -1, parentLastFunc = -1,
         totalVars = scope.variables.size(),
-        totalFuncs = scope.funcSignatures.size();
+        totalFuncs = scope.funcSignatures.size() + ctx.builtinsFuncs.size();
     if (scope.parent != -1) {
         parentScope = &ast->ast.scopes[scope.parent];
-        pickVar = std::uniform_int_distribution<int>(
-            0, parentScope->variables.size() + scope.variables.size() - 1);
+        totalVars += parentScope->variables.size();
         parentLastVar = parentScope->variables.size() - 1;
-        pickFunc = std::uniform_int_distribution<int>(
-            0, parentScope->funcSignatures.size() +
-                   scope.funcSignatures.size() - 1);
         parentLastFunc = parentScope->funcSignatures.size() - 1;
         totalVars += parentScope->variables.size();
         totalFuncs += parentScope->funcSignatures.size();
-    } else {
-        pickVar =
-            std::uniform_int_distribution<int>(0, scope.variables.size() - 1);
-        pickFunc = std::uniform_int_distribution<int>(
-            0, scope.funcSignatures.size() - 1);
     }
+    std::uniform_int_distribution<int> pickVar(0, totalVars - 1);
+    std::uniform_int_distribution<int> pickFunc(0, totalFuncs - 1);
     for (int i = 0; i < NUM_GEN; ++i) {
         MutationState state = MutationState::STATE_REROLL;
         while (state != MutationState::STATE_OK) {
@@ -79,6 +71,12 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
             auto pickRandomFunc =
                 [&](std::string &name) -> const FunctionSignature & {
                 auto pickID = pickFunc(rng);
+                if(pickID < ctx.builtinsFuncs.size()) {
+                    auto it = std::next(ctx.builtinsFuncs.begin(), pickID);
+                    name = it->first;
+                    return it->second;
+                }
+                pickID -= ctx.builtinsFuncs.size();
                 if (parentScope && pickID <= parentLastFunc) {
                     auto target =
                         std::next(parentScope->funcSignatures.begin(), pickID);
