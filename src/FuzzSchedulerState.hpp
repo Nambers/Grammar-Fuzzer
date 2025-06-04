@@ -26,8 +26,7 @@ class FuzzSchedulerState {
 	// max 5 variables / type declarations
 	size_t maxNumDeclarations = 10;
 
-	std::unordered_map<std::string, FunctionSignature> builtinsFuncs;
-	std::vector<std::string> types;
+	BuiltinContext ctx;
 	FuzzSchedulerState() = default;
 
 	void update(bool gotNewEdge, size_t maxNumDeclarations);

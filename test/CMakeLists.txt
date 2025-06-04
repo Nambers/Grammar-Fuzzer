@@ -8,6 +8,7 @@ find_package(nlohmann_json 3.12.0 REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 set(AST_SOURCES
+  ${PROJECT_SOURCE_DIR}/../src/ast.cpp
   ${PROJECT_SOURCE_DIR}/../src/driver/python/driver.cpp
   ${PROJECT_SOURCE_DIR}/driver/python/test.cpp
 )

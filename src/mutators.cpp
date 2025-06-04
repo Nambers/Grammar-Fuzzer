@@ -13,11 +13,11 @@ int FuzzingAST::generate_execution(const std::shared_ptr<ASTData> &ast) {
     return 0;
 }
 
-int FuzzingAST::mutate_declaration(const std::shared_ptr<ASTData> &ast) {
+int FuzzingAST::mutate_declaration(const std::shared_ptr<ASTData> &ast, const BuiltinContext &ctx) {
     for (ScopeID sid = 0; sid < ast->ast.scopes.size(); ++sid) {
         ASTScope &scope = ast->ast.scopes[sid];
-        mutate_expression(ast, scope.declarations);
-        reflectObject(ast->ast, scope);
+        mutate_expression(ast, sid, ctx);
+        reflectObject(ast->ast, scope, ctx);
     }
     return 0;
 }

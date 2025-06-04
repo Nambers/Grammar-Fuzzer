@@ -5,8 +5,8 @@
 #include <random>
 
 namespace FuzzingAST {
-std::shared_ptr<ASTData> FuzzerInitialize(int *argc, char ***argv);
-void fuzzerDriver(std::shared_ptr<ASTData> &);
+AST FuzzerInitialize(int *argc, char ***argv);
+void fuzzerDriver(AST initAST);
 } // namespace FuzzingAST
 
 #endif // FUZZER_HPP

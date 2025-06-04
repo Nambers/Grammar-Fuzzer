@@ -27,7 +27,7 @@ extern "C" void __attribute__((visibility("default"))) LLVMFuzzerFinalize() {
 int main(int argc, char **argv) {
 	// init_cov();
 	auto ret = FuzzerInitialize(&argc, &argv);
-	fuzzerDriver(ret);
+	fuzzerDriver(std::move(ret));
 	LLVMFuzzerFinalize();
 	return 0;
 }

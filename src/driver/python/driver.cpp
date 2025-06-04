@@ -10,20 +10,16 @@
 
 using namespace FuzzingAST;
 
-void valueToPython(std::ostringstream &out, const ASTNodeValue &val,
-                   const AST &ast, int indentLevel);
-
 void nodeToPython(std::ostringstream &out, const ASTNode &node, const AST &ast,
-                  int indentLevel);
-
+                  const BuiltinContext &ctx, int indentLevel);
 void scopeToPython(std::ostringstream &out, ScopeID sid, const AST &ast,
-                   int indentLevel);
+                   const BuiltinContext &ctx, int indentLevel);
 
+/* ───────── helpers ───────── */
 void valueToPython(std::ostringstream &out, const ASTNodeValue &val,
-                   const AST &ast, int indentLevel) {
+                   const AST &ast, const BuiltinContext &ctx, int indentLevel) {
     if (std::holds_alternative<std::string>(val.val)) {
-        const std::string &s = std::get<std::string>(val.val);
-        out << s;
+        out << std::get<std::string>(val.val);
     } else if (std::holds_alternative<int64_t>(val.val)) {
         out << std::get<int64_t>(val.val);
     } else if (std::holds_alternative<bool>(val.val)) {
@@ -32,64 +28,138 @@ void valueToPython(std::ostringstream &out, const ASTNodeValue &val,
         out << std::get<double>(val.val);
     } else if (std::holds_alternative<NodeID>(val.val)) {
         const ASTNode &child = ast.expressions.at(std::get<NodeID>(val.val));
-        nodeToPython(out, child, ast, indentLevel);
+        nodeToPython(out, child, ast, ctx, indentLevel);
     } else {
         out << "None";
     }
 }
 
 void nodeToPython(std::ostringstream &out, const ASTNode &node, const AST &ast,
-                  int indentLevel) {
-    std::string ind(indentLevel * 4, ' ');
+                  const BuiltinContext &ctx, int indentLevel) {
+    const std::string ind(indentLevel * 4, ' ');
     out << ind;
 
     switch (node.kind) {
-    case ASTNodeKind::DeclareVar:
-    case ASTNodeKind::Assign:
-        valueToPython(out, node.fields[0], ast, indentLevel);
+    case ASTNodeKind::DeclareVar: {
+        // name [: type] = value
+        const std::string &name = std::get<std::string>(node.fields[0].val);
+        out << name;
+        if (node.type != -1)
+            out << ": " << getTypeName(node.type, ast, ctx);
         out << " = ";
-        valueToPython(out, node.fields[1], ast, indentLevel);
+        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
+        break;
+    }
+    case ASTNodeKind::Assign:
+        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        out << " = ";
+        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
         break;
 
     case ASTNodeKind::Return:
         out << "return ";
-        valueToPython(out, node.fields[0], ast, indentLevel);
+        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
         break;
 
     case ASTNodeKind::Call:
-        valueToPython(out, node.fields[0], ast, indentLevel);
+        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
         out << "(";
         for (size_t i = 1; i < node.fields.size(); ++i) {
             if (i > 1)
                 out << ", ";
-            valueToPython(out, node.fields[i], ast, indentLevel);
+            valueToPython(out, node.fields[i], ast, ctx, indentLevel);
         }
         out << ")";
         break;
 
     case ASTNodeKind::BinaryOp:
-        valueToPython(out, node.fields[0], ast, indentLevel);
+        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
         out << " = ";
-        valueToPython(out, node.fields[1], ast, indentLevel);
-        out << " " << std::get<std::string>(node.fields[2].val) << " ";
-        valueToPython(out, node.fields[3], ast, indentLevel);
+        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
+        out << ' ' << std::get<std::string>(node.fields[2].val) << ' ';
+        valueToPython(out, node.fields[3], ast, ctx, indentLevel);
         break;
 
     case ASTNodeKind::UnaryOp:
-        valueToPython(out, node.fields[0], ast, indentLevel);
-        out << " = " << std::get<std::string>(node.fields[1].val) << " ";
-        valueToPython(out, node.fields[2], ast, indentLevel);
+        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        out << " = " << std::get<std::string>(node.fields[1].val) << ' ';
+        valueToPython(out, node.fields[2], ast, ctx, indentLevel);
         break;
+
+    case ASTNodeKind::Function: {
+        const std::string &name = std::get<std::string>(node.fields[0].val);
+
+        // def fields[0](fields[2]...) -> fields[1]
+        size_t paramCnt = node.fields.size() > 2 ? node.fields.size() - 2 : 0;
+        out << "def " << name << '(';
+        for (size_t i = 0; i < paramCnt; ++i) {
+            if (i)
+                out << ", ";
+            TypeID pt =
+                static_cast<TypeID>(std::get<int64_t>(node.fields[2 + i].val));
+            out << "arg" << i << ": " << getTypeName(pt, ast, ctx);
+        }
+        out << ")";
+
+        TypeID retType = std::get<TypeID>(node.fields[1].val);
+        if (retType != -1) {
+            out << " -> " << getTypeName(retType, ast, ctx);
+        }
+
+        out << ":\n";
+        out << std::string((indentLevel + 1) * 4, ' ') << "pass";
+        break;
+    }
+
+    /* ─── 类定义 ─── */
+    case ASTNodeKind::Class: {
+        const std::string &name = std::get<std::string>(node.fields[0].val);
+
+        std::vector<std::string> bases;
+        size_t idx = 1; // collect bases
+        for (; idx < node.fields.size(); ++idx) {
+            if (std::holds_alternative<int64_t>(node.fields[idx].val) &&
+                std::get<int64_t>(node.fields[idx].val) == -1) {
+                ++idx; // skip sentinel
+                break;
+            }
+            bases.push_back(std::get<std::string>(node.fields[idx].val));
+        }
+
+        out << "class " << name;
+        if (!bases.empty()) {
+            out << '(';
+            for (size_t i = 0; i < bases.size(); ++i) {
+                if (i)
+                    out << ", ";
+                out << bases[i];
+            }
+            out << ')';
+        }
+        out << ":\n";
+
+        bool bodyEmpty = true;
+        for (; idx < node.fields.size(); ++idx) {
+            NodeID fnID =
+                static_cast<NodeID>(std::get<int64_t>(node.fields[idx].val));
+            nodeToPython(out, ast.declarations.at(fnID), ast, ctx,
+                         indentLevel + 1);
+            bodyEmpty = false;
+        }
+        if (bodyEmpty)
+            out << std::string((indentLevel + 1) * 4, ' ') << "pass";
+        break;
+    }
 
     default:
         out << "# unsupported kind " << static_cast<int>(node.kind);
         break;
     }
-    out << "\n";
+    out << '\n';
 }
 
 void scopeToPython(std::ostringstream &out, ScopeID sid, const AST &ast,
-                   int indentLevel) {
+                   const BuiltinContext &ctx, int indentLevel) {
     if (sid == -1)
         return;
 
@@ -97,22 +167,21 @@ void scopeToPython(std::ostringstream &out, ScopeID sid, const AST &ast,
     bool empty = true;
 
     for (NodeID id : scope.declarations) {
-        nodeToPython(out, ast.declarations.at(id), ast, indentLevel);
+        nodeToPython(out, ast.declarations.at(id), ast, ctx, indentLevel);
         empty = false;
     }
     for (NodeID id : scope.expressions) {
-        nodeToPython(out, ast.expressions.at(id), ast, indentLevel);
+        nodeToPython(out, ast.expressions.at(id), ast, ctx, indentLevel);
         empty = false;
     }
 
-    if (empty) {
+    if (empty)
         out << std::string(indentLevel * 4, ' ') << "pass\n";
-    }
 }
 
-int FuzzingAST::runAST(const AST &ast, bool echo) {
+int FuzzingAST::runAST(const AST &ast, const BuiltinContext &ctx, bool echo) {
     std::ostringstream script;
-    scopeToPython(script, 0, ast, 0);
+    scopeToPython(script, 0, ast, ctx, 0);
     std::string re = script.str();
 
     if (echo) {
@@ -124,6 +193,7 @@ int FuzzingAST::runAST(const AST &ast, bool echo) {
 #ifndef QUIET
         PyErr_Print();
 #endif
+        PyErr_Clear();
         return -1;
     }
 
@@ -138,6 +208,7 @@ int FuzzingAST::runAST(const AST &ast, bool echo) {
 #ifndef QUIET
         PyErr_Print();
 #endif
+        PyErr_Clear();
         return -1;
     }
     return 0;
@@ -164,9 +235,9 @@ int FuzzingAST::finalize() {
     return 0;
 }
 
-void FuzzingAST::loadBuiltinsFuncs(
-    std::unordered_map<std::string, FunctionSignature> &funcSignatures,
-    std::vector<std::string> &types) {
+void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
+    auto &funcSignatures = ctx.builtinsFuncs;
+    auto &types = ctx.types;
     FILE *file = fopen("./src/driver/python/builtins.json", "r");
     if (!file) {
         PANIC("Failed to open builtins.json, run build.sh to generate it.");
@@ -180,30 +251,22 @@ void FuzzingAST::loadBuiltinsFuncs(
 }
 
 void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,
-                          const FuzzSchedulerState &scheduler) {
+                          const BuiltinContext &ctx) {
     // dummy corpus
     // decl:
     // + str_a = ""
     // + str_b = ""
     // + byte_a = b"""
     // + int_a = 0
-    int strType =
-        std::find(scheduler.types.begin(), scheduler.types.end(), "str") -
-        scheduler.types.begin();
-    int bytesType =
-        std::find(scheduler.types.begin(), scheduler.types.end(), "bytes") -
-        scheduler.types.begin();
-    int intType =
-        std::find(scheduler.types.begin(), scheduler.types.end(), "int") -
-        scheduler.types.begin();
-
+    TypeID bytesType = std::find(ctx.types.begin(), ctx.types.end(), "bytes") -
+                       ctx.types.begin();
     data->ast.declarations.push_back(
         ASTNode{ASTNodeKind::DeclareVar,
-                strType,
+                ctx.strID,
                 {ASTNodeValue{"str_a"}, ASTNodeValue{std::string("\"\"")}}});
     data->ast.declarations.push_back(
         ASTNode{ASTNodeKind::DeclareVar,
-                strType,
+                ctx.strID,
                 {ASTNodeValue{"str_b"}, ASTNodeValue{std::string("\"\"")}}});
     data->ast.declarations.push_back(
         ASTNode{ASTNodeKind::DeclareVar,
@@ -211,7 +274,7 @@ void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,
                 {ASTNodeValue{"byte_a"}, ASTNodeValue{std::string("b\"\"")}}});
     data->ast.declarations.push_back(
         ASTNode{ASTNodeKind::DeclareVar,
-                intType,
+                ctx.intID,
                 {ASTNodeValue{"int_a"}, ASTNodeValue{int64_t(0)}}});
     data->ast.scopes[0].declarations.resize(4);
     data->ast.scopes[0].variables.resize(4);
@@ -225,13 +288,14 @@ void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,
     data->ast.scopes[0].variables[3] = 3;
 }
 
-void FuzzingAST::reflectObject(const AST &ast, ASTScope &scope) {
+void FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
+                               const BuiltinContext &ctx) {
     std::ostringstream script;
 
     bool empty = true;
 
     for (NodeID id : scope.declarations) {
-        nodeToPython(script, ast.declarations.at(id), ast, 0);
+        nodeToPython(script, ast.declarations.at(id), ast, ctx, 0);
         empty = false;
     }
 

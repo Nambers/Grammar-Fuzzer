@@ -81,7 +81,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTScope, declarations, expressions,
                                    retType);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(FunctionSignature, paramTypes, selfType,
                                    returnType);
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AST, scopes, declarations, expressions);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AST, nameCnt, scopes, declarations, expressions);
 
 }; // namespace FuzzingAST
 
