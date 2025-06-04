@@ -202,6 +202,7 @@ int FuzzingAST::runAST(const AST &ast, const BuiltinContext &ctx, bool echo) {
     PyDict_SetItemString(dict, "__name__", name);
     PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
     PyEval_EvalCode(code, dict, dict);
+    Py_DECREF(code);
     Py_DECREF(dict);
     Py_DECREF(name);
     if (PyErr_Occurred()) {
@@ -320,20 +321,6 @@ void FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
         PANIC("Failed to run driver.py");
     }
     PyObject *rawJson = PyDict_GetItemString(dict, "result");
-    auto *aaa = PyDict_Keys(dict);
-    // print all
-    if (aaa) {
-        for (Py_ssize_t i = 0; i < PyList_Size(aaa); ++i) {
-            PyObject *key = PyList_GetItem(aaa, i);
-            if (PyUnicode_Check(key)) {
-                std::string keyStr = PyUnicode_AsUTF8(key);
-                std::cout << "Key: " << keyStr << std::endl;
-            } else {
-                std::cout << "Key is not a string" << std::endl;
-            }
-        }
-        Py_DECREF(aaa);
-    }
     if (!rawJson) {
         PyErr_Print();
         PANIC("Failed to get 'result' from driver.py");
@@ -343,9 +330,10 @@ void FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
         PANIC("'result' from driver.py is not a string");
     }
     std::string jsonStr(PyUnicode_AsUTF8(rawJson));
-    Py_DECREF(rawJson);
-    Py_DECREF(dict);
+    // DON'T DECREF
+    // Py_DECREF(rawJson);
     Py_DECREF(name);
+    Py_DECREF(dict);
     if (jsonStr.empty()) {
         PANIC("Empty result from driver.py");
     }

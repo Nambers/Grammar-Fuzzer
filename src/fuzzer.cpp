@@ -22,7 +22,8 @@ uint32_t newEdgeCnt = 0;
 
 std::mt19937 rng(std::random_device{}());
 
-int testOneInput(const std::shared_ptr<ASTData> &data, const BuiltinContext &ctx) {
+int testOneInput(const std::shared_ptr<ASTData> &data,
+                 const BuiltinContext &ctx) {
     data_backup = data->ast;
     return runAST(data->ast, ctx);
 }
@@ -66,10 +67,14 @@ AST FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
 }
 
 void initPrimitiveTypes(BuiltinContext &ctx) {
-    ctx.strID = std::find(ctx.types.begin(), ctx.types.end(), "str") - ctx.types.begin();
-    ctx.intID = std::find(ctx.types.begin(), ctx.types.end(), "int") - ctx.types.begin();
-    ctx.floatID = std::find(ctx.types.begin(), ctx.types.end(), "float") - ctx.types.begin();
-    ctx.boolID = std::find(ctx.types.begin(), ctx.types.end(), "bool") - ctx.types.begin();
+    ctx.strID = std::find(ctx.types.begin(), ctx.types.end(), "str") -
+                ctx.types.begin();
+    ctx.intID = std::find(ctx.types.begin(), ctx.types.end(), "int") -
+                ctx.types.begin();
+    ctx.floatID = std::find(ctx.types.begin(), ctx.types.end(), "float") -
+                  ctx.types.begin();
+    ctx.boolID = std::find(ctx.types.begin(), ctx.types.end(), "bool") -
+                 ctx.types.begin();
 }
 
 void FuzzingAST::fuzzerDriver(AST initAST) {
@@ -113,7 +118,7 @@ void FuzzingAST::fuzzerDriver(AST initAST) {
                                        scheduler.idx);
                 scheduler.idx =
                     std::uniform_int_distribution<>(0, scheduler.idx / 2)(rng);
-                scheduler.update(0, newData->ast.declarations.size());
+                scheduler.update(0, scheduler.corpus[scheduler.idx]->ast.declarations.size());
                 break;
             }
         }
