@@ -16,7 +16,7 @@ class FuzzSchedulerState {
 	size_t noEdgeCount = 0;
 	size_t execStallCount = 0;
     // initial mutation
-	MutationPhase phase = MutationPhase::DeclarationMutation;
+	MutationPhase phase = MutationPhase::ExecutionGeneration;
 	// corpus index
 	uint idx = 0;
 	std::vector<std::shared_ptr<ASTData>> corpus;

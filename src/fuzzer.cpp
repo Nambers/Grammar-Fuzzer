@@ -19,6 +19,7 @@ constexpr size_t SAVE_POINT = 1000; // save every 1000 rounds
 
 static std::string data_backup;
 static size_t totalRounds = 0;
+static FuzzSchedulerState scheduler;
 uint32_t newEdgeCnt = 0;
 
 std::mt19937 rng(std::random_device{}());
@@ -33,6 +34,11 @@ void crash_handler() {
     ERROR("crash! last saved states");
     INFO("AST={}", data_backup);
     fuzzerEmitCacheCorpus();
+    int cnt = 0;
+    for (const auto &data : scheduler.corpus) {
+        std::ofstream out("corpus/saved/" + std::to_string(cnt++) + ".json");
+        out << nlohmann::json(data->ast).dump();
+    }
     _exit(1);
 }
 
@@ -44,20 +50,13 @@ void sigint_handler(int signo) {
 AST FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
     AST ret = {};
     if (argc != NULL && argv != NULL) {
-        std::ifstream last_case;
-        for (int i = 0; i < *argc; i++) {
-            if (std::strncmp((*argv)[i],
-                             "-last-case=", strlen("-last-case=")) == 0) {
-                std::string_view filename = (*argv)[i] + strlen("-last-case=");
-                INFO("Using last-case file: {}", filename);
-                last_case.open(filename.data(), std::ios::in);
-                if (!last_case.is_open()) {
-                    PANIC("Failed to open last-case file: {}", filename);
-                }
-                ret = nlohmann::json::parse(last_case).get<AST>();
-                last_case.close();
-                break;
+        if(*argc >= 1 && std::strcmp((*argv)[0], "-load-saved") == 0){
+            std::string savedPath = "corpus/saved/";
+            if(*argc == 2 && (*argv)[1] != nullptr) {
+                savedPath = (*argv)[1];
             }
+            INFO("Loading saved corpus from: {}", savedPath);
+            fuzzerLoadCorpus(savedPath, scheduler.corpus);
         }
     }
     initialize(argc, argv);
@@ -80,7 +79,6 @@ void initPrimitiveTypes(BuiltinContext &ctx) {
 
 void FuzzingAST::fuzzerDriver(AST initAST) {
     cacheCorpus.reserve(MAX_CACHE_SIZE);
-    FuzzSchedulerState scheduler;
     loadBuiltinsFuncs(scheduler.ctx);
     initPrimitiveTypes(scheduler.ctx);
     std::shared_ptr<ASTData> data = std::make_shared<ASTData>();

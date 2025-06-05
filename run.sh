@@ -5,10 +5,10 @@ BUILD_PATH=$(readlink -f build)
 COV_PATH=$(readlink -f cov)
 BUILD_COV_PATH=$COV_PATH/build
 
-mkdir -p corpus/tmp corpus/queue corpus/done
+mkdir -p corpus/tmp corpus/queue corpus/done corpus/saved
 
 echo "[run.sh] Cleaning old corpus..."
-rm -f corpus/tmp/* corpus/queue/* corpus/done/*
+rm -f corpus/tmp/* corpus/queue/* corpus/done/* corpus/saved/*
 
 cleanup() {
     echo ""
