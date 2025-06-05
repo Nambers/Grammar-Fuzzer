@@ -7,5 +7,5 @@ BUILD_PATH=$COV_PATH/build
 
 # do llvm-cov
 
-llvm-profdata merge -sparse $(find $COV_PATH -type f -name "*.profraw") -o default.profdata
+llvm-profdata merge -sparse $(find ./ -type f -name "*.profraw") -o default.profdata
 llvm-cov show $CPYTHON_LIB/libpython3.13.so.1.0 -instr-profile=default.profdata -o reports
