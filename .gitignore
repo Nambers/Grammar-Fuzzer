@@ -9,3 +9,5 @@
 !*.sh
 !CMakeLists.txt
 !readme.md
+!cov
+!cov/**

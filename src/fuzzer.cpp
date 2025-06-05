@@ -2,6 +2,7 @@
 #include "FuzzSchedulerState.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
+#include "emit.hpp"
 #include "log.hpp"
 #include "mutators.hpp"
 #include "serialization.hpp"
@@ -31,6 +32,7 @@ int testOneInput(const std::shared_ptr<ASTData> &data,
 void crash_handler() {
     ERROR("crash! last saved states");
     INFO("AST={}", data_backup);
+    fuzzerEmitCacheCorpus(cacheCorpus);
     _exit(1);
 }
 
@@ -77,6 +79,7 @@ void initPrimitiveTypes(BuiltinContext &ctx) {
 }
 
 void FuzzingAST::fuzzerDriver(AST initAST) {
+    cacheCorpus.reserve(MAX_CACHE_SIZE);
     FuzzSchedulerState scheduler;
     loadBuiltinsFuncs(scheduler.ctx);
     initPrimitiveTypes(scheduler.ctx);
@@ -105,9 +108,19 @@ void FuzzingAST::fuzzerDriver(AST initAST) {
             // if fail to run, drop the result and do it again.
             const auto cacheNewEdgeCnt = newEdgeCnt;
             if (testOneInput(newData, scheduler.ctx) == 0) {
-                // TODO sync new edge corpus with coverage instance
-                scheduler.update(newEdgeCnt > cacheNewEdgeCnt,
-                                 newData->ast.declarations.size());
+                if (newEdgeCnt > cacheNewEdgeCnt) {
+                    scheduler.update(1, newData->ast.declarations.size());
+
+                    cacheCorpus.emplace_back(
+                        nlohmann::json(newData->ast).dump());
+                    if (cacheCorpus.size() > MAX_CACHE_SIZE) {
+                        fuzzerEmitCacheCorpus(cacheCorpus);
+                        cacheCorpus.clear();
+                    }
+
+                } else {
+                    scheduler.update(0, newData->ast.declarations.size());
+                }
             }
             break;
         }
