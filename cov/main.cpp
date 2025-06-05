@@ -74,6 +74,7 @@ int main() {
     }
 
     loadBuiltinsFuncs(ctx);
+    initPrimitiveTypes(ctx);
 
     std::cout << "[cov] Starting coverage runner...\n";
 

@@ -35,7 +35,8 @@ export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0;
 LLVM_PROFILE_FILE="default_%p.profraw" $BUILD_COV_PATH/CPythonCov &
 COV_PID=$!
 
-$BUILD_PATH/pyFuzzer &
+# -load-saved to load previously saved corpus
+$BUILD_PATH/pyFuzzer -load-saved &
 FUZZ_PID=$!
 
 wait "$FUZZ_PID"

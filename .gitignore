@@ -11,3 +11,6 @@
 !readme.md
 !cov
 !cov/**
+!cov_map.py
+!tools
+!tools/**

@@ -57,6 +57,7 @@ AST FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
             }
             INFO("Loading saved corpus from: {}", savedPath);
             fuzzerLoadCorpus(savedPath, scheduler.corpus);
+            scheduler.idx = scheduler.corpus.size() - 1;
         }
     }
     initialize(argc, argv);
@@ -64,17 +65,6 @@ AST FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
     signal(SIGINT, sigint_handler);
     __sanitizer_set_death_callback(crash_handler);
     return std::move(ret);
-}
-
-void initPrimitiveTypes(BuiltinContext &ctx) {
-    ctx.strID = std::find(ctx.types.begin(), ctx.types.end(), "str") -
-                ctx.types.begin();
-    ctx.intID = std::find(ctx.types.begin(), ctx.types.end(), "int") -
-                ctx.types.begin();
-    ctx.floatID = std::find(ctx.types.begin(), ctx.types.end(), "float") -
-                  ctx.types.begin();
-    ctx.boolID = std::find(ctx.types.begin(), ctx.types.end(), "bool") -
-                 ctx.types.begin();
 }
 
 void FuzzingAST::fuzzerDriver(AST initAST) {

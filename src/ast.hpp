@@ -104,6 +104,7 @@ class ASTData {
 
 const std::string &getTypeName(TypeID tid, const AST &scope,
                                const BuiltinContext &ctx);
+void initPrimitiveTypes(BuiltinContext &ctx);
 }; // namespace FuzzingAST
 
 #endif // AST_HPP
