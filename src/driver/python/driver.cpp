@@ -345,7 +345,8 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     auto tmp =
         j["funcs"].get<std::unordered_map<std::string, FunctionSignature>>();
     scope.funcSignatures.swap(tmp);
-    auto tmp2 = j["types"].get<std::vector<std::string>>();
-    scope.types.swap(tmp2);
+    // maintain types by ourself
+    // auto tmp2 = j["types"].get<std::vector<std::string>>();
+    // scope.types.swap(tmp2);
     return 0;
 }

@@ -184,7 +184,6 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
 
         /* ----------  AddClass  ---------- */
         case MutationPick::AddClass: {
-            NodeID clsID = ast->ast.declarations.size();
             ASTNode cls;
             cls.kind = ASTNodeKind::Class;
 
@@ -212,8 +211,7 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                     cls.fields.push_back({inheritName});
             }
 
-            // will be add in reflectObject
-            // scope.types.push_back(std::get<std::string>(cls.fields[0].val));
+            scope.types.push_back(std::get<std::string>(cls.fields[0].val));
             // sentinel
             cls.fields.push_back({-1});
 
@@ -246,7 +244,7 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                 ast->ast.declarations.push_back(std::move(fun));
             }
 
-            scope.declarations.push_back(clsID);
+            scope.declarations.push_back(ast->ast.declarations.size());
 
             ast->ast.declarations.push_back(std::move(cls));
             break;
