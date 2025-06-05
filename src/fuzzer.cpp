@@ -32,7 +32,7 @@ int testOneInput(const std::shared_ptr<ASTData> &data,
 void crash_handler() {
     ERROR("crash! last saved states");
     INFO("AST={}", data_backup);
-    fuzzerEmitCacheCorpus(cacheCorpus);
+    fuzzerEmitCacheCorpus();
     _exit(1);
 }
 
@@ -114,7 +114,7 @@ void FuzzingAST::fuzzerDriver(AST initAST) {
                     cacheCorpus.emplace_back(
                         nlohmann::json(newData->ast).dump());
                     if (cacheCorpus.size() > MAX_CACHE_SIZE) {
-                        fuzzerEmitCacheCorpus(cacheCorpus);
+                        fuzzerEmitCacheCorpus();
                         cacheCorpus.clear();
                     }
 

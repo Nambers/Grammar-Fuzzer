@@ -15,14 +15,14 @@ cleanup() {
     echo "[run.sh] Caught SIGINT, shutting down fuzzer and cov..."
 
     echo "[run.sh] Killing fuzzer (PID=$FUZZ_PID)..."
-    kill "$FUZZ_PID" 2>/dev/null || true
+    kill -s SIGINT "$FUZZ_PID" 2>/dev/null || true
     wait "$FUZZ_PID" 2>/dev/null || true
 
     echo "[run.sh] Waiting 1s before killing cov..."
     sleep 1
 
     echo "[run.sh] Killing cov (PID=$COV_PID)..."
-    kill "$COV_PID" 2>/dev/null || true
+    kill -s SIGINT "$COV_PID" 2>/dev/null || true
     wait "$COV_PID" 2>/dev/null || true
 
     echo "[run.sh] Clean exit."
@@ -30,7 +30,9 @@ cleanup() {
 }
 trap cleanup SIGINT
 
-$BUILD_COV_PATH/CPythonCov &
+export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0;
+
+LLVM_PROFILE_FILE="default_%p.profraw" $BUILD_COV_PATH/CPythonCov &
 COV_PID=$!
 
 $BUILD_PATH/pyFuzzer &

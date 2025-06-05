@@ -8,7 +8,7 @@
 
 namespace fs = std::filesystem;
 
-std::vector<std::string> FuzzingAST::cacheCorpus = {};
+std::vector<std::string> FuzzingAST::cacheCorpus;
 
 // Generate unique filename using timestamp + counter
 static std::string make_unique_filename(int counter) {
@@ -18,12 +18,11 @@ static std::string make_unique_filename(int counter) {
     return std::to_string(millis) + "_" + std::to_string(counter) + ".json";
 }
 
-void FuzzingAST::fuzzerEmitCacheCorpus(
-    const std::vector<std::string> &jsonCorpus) {
+void FuzzingAST::fuzzerEmitCacheCorpus() {
     fs::create_directories("corpus/tmp");
     fs::create_directories("corpus/queue");
 
-    for (size_t i = 0; i < jsonCorpus.size(); ++i) {
+    for (size_t i = 0; i < FuzzingAST::cacheCorpus.size(); ++i) {
         std::string filename = make_unique_filename(i);
         fs::path tmpPath = "corpus/tmp/" + filename;
         fs::path queuePath = "corpus/queue/" + filename;
@@ -31,7 +30,7 @@ void FuzzingAST::fuzzerEmitCacheCorpus(
         // 1. Write to temp
         {
             std::ofstream out(tmpPath);
-            out << jsonCorpus[i];
+            out << FuzzingAST::cacheCorpus[i];
         }
 
         // 2. Atomically move

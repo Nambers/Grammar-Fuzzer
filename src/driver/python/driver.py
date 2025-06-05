@@ -22,49 +22,49 @@ def normalize_type(ann):
         return str(ann)
 
 
-def index_type(name: str, types: list[str]) -> int:
-    return types.index(name)
+def extract_signature(obj, clsname=None, method_type="instance"):
+    param_types = []
+    return_type = "object"
+    self_type = (
+        None
+        if method_type == "static"
+        else clsname if clsname else None
+    )
 
-
-def extract_signature(obj, types, clsname=None, method_type="instance"):
     try:
         sig = inspect.signature(obj)
-        param_types = []
-        self_type = (
-            -1
-            if method_type == "static"
-            else index_type(clsname, types) if clsname else -1
-        )
-
-        for i, (pname, param) in enumerate(sig.parameters.items()):
-            ann = normalize_type(param.annotation)
-            ann = "object" if ann in ("Any", "object") else ann
-            if i == 0 and pname in ("self", "cls") and method_type != "static":
-                continue
-            param_types.append(index_type(ann, types))
-
-        return_type = normalize_type(sig.return_annotation)
-        return_type = "object" if return_type in ("Any", "object") else return_type
-
+    except (TypeError, ValueError):
+        # If the object has no signature (e.g., built-in descriptors)
         return {
-            "paramTypes": param_types,
+            "paramTypes": ["object", "object"],
             "selfType": self_type,
-            "returnType": index_type(return_type, types),
+            "returnType": "object",
         }
 
+    for i, (pname, param) in enumerate(sig.parameters.items()):
+        try:
+            ann = normalize_type(param.annotation)
+        except Exception:
+            ann = "object"
+        ann = "object" if ann in ("Any", "object") else ann
+        if i == 0 and pname in ("self", "cls") and method_type != "static":
+            continue
+        param_types.append(ann)
+
+    try:
+        return_ann = normalize_type(sig.return_annotation)
     except Exception:
-        return {
-            "paramTypes": [index_type("object", types), index_type("object", types)],
-            "selfType": (
-                -1  # no return
-                if method_type == "static"
-                else index_type(clsname, types) if clsname else -1
-            ),
-            "returnType": index_type("object", types),
-        }
+        return_ann = "object"
+    return_type = "object" if return_ann in ("Any", "object") else return_ann
+
+    return {
+        "paramTypes": param_types,
+        "selfType": self_type,
+        "returnType": return_type,
+    }
 
 
-def collect_class_methods(cls, types, qualified_name=None):
+def collect_class_methods(cls, qualified_name=None):
     methods = {}
     if not inspect.isclass(cls):
         return methods
@@ -85,36 +85,31 @@ def collect_class_methods(cls, types, qualified_name=None):
             continue
 
         full_name = f"{clsname}.{attr_name}"
-        sig = extract_signature(real_func, types, clsname, method_type)
+        sig = extract_signature(real_func, clsname, method_type)
         methods[full_name] = sig
 
     return methods
 
 
 def collect_all(enable_builtins=False, results={"funcs": {}, "types": []}):
-    if enable_builtins:
-        for name in dir(builtins):
-            obj = getattr(builtins, name)
+    if not enable_builtins:
+        for name, obj in globals().items():
             if inspect.isclass(obj):
                 results["types"].append(name)
-
-    for name, obj in globals().items():
-        if inspect.isclass(obj):
-            results["types"].append(name)
 
     if enable_builtins:
         for name in dir(builtins):
             obj = getattr(builtins, name)
             if inspect.isbuiltin(obj) and name not in BLACKLIST:
-                results["funcs"][name] = extract_signature(obj, results["types"])
+                results["funcs"][name] = extract_signature(obj)
             if inspect.isclass(obj):
                 results["funcs"].update(
-                    collect_class_methods(obj, results["types"], name)
+                    collect_class_methods(obj, name)
                 )
 
     for name, obj in globals().items():
         if inspect.isclass(obj):
-            results["funcs"].update(collect_class_methods(obj, results["types"], name))
+            results["funcs"].update(collect_class_methods(obj, name))
 
     return results
 

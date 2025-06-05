@@ -275,6 +275,20 @@ void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,
     data->ast.scopes[0].variables[3] = 3;
 }
 
+static TypeID resolveType(const std::string &name, const BuiltinContext &ctx,
+                          const ASTScope &scope) {
+    auto it = std::find(ctx.types.begin(), ctx.types.end(), name);
+    if (it != ctx.types.end())
+        return static_cast<TypeID>(std::distance(ctx.types.begin(), it));
+
+    auto it2 = std::find(scope.types.begin(), scope.types.end(), name);
+    if (it2 != scope.types.end())
+        return static_cast<TypeID>(ctx.types.size() +
+                                   std::distance(scope.types.begin(), it2));
+
+    return 0; // fallback to "object"
+}
+
 int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
                               const BuiltinContext &ctx) {
     std::ostringstream script;
@@ -342,8 +356,26 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
         PANIC("Empty result from driver.py");
     }
     nlohmann::json j = nlohmann::json::parse(jsonStr);
-    auto tmp =
-        j["funcs"].get<std::unordered_map<std::string, FunctionSignature>>();
+    auto &funcs = j["funcs"];
+
+    for (auto &[_name, sig] : funcs.items()) {
+        for (auto &typeName : sig["paramTypes"]) {
+            typeName = resolveType(typeName.get<std::string>(), ctx, scope);
+        }
+
+        if (sig.contains("returnType"))
+            sig["returnType"] =
+                resolveType(sig["returnType"].get<std::string>(), ctx, scope);
+
+        if (sig.contains("selfType") && !sig["selfType"].is_null())
+            sig["selfType"] =
+                resolveType(sig["selfType"].get<std::string>(), ctx, scope);
+        else
+            sig["selfType"] = -1;
+    }
+
+    auto tmp = funcs.get<std::unordered_map<std::string, FunctionSignature>>();
+
     scope.funcSignatures.swap(tmp);
     // maintain types by ourself
     // auto tmp2 = j["types"].get<std::vector<std::string>>();

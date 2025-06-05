@@ -6,7 +6,7 @@
 namespace FuzzingAST {
 constexpr size_t MAX_CACHE_SIZE = 500;
 extern std::vector<std::string> cacheCorpus;
-void fuzzerEmitCacheCorpus(const std::vector<std::string> &jsonCorpus);
+void fuzzerEmitCacheCorpus();
 } // namespace FuzzingAST
 
 #endif // FUZZER_EMIT_HPP
