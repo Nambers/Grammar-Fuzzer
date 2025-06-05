@@ -16,7 +16,7 @@ using namespace FuzzingAST;
 extern "C" void __sanitizer_set_death_callback(void (*)(void));
 constexpr size_t SAVE_POINT = 1000; // save every 1000 rounds
 
-static nlohmann::json data_backup;
+static std::string data_backup;
 static size_t totalRounds = 0;
 uint32_t newEdgeCnt = 0;
 
@@ -24,14 +24,13 @@ std::mt19937 rng(std::random_device{}());
 
 int testOneInput(const std::shared_ptr<ASTData> &data,
                  const BuiltinContext &ctx) {
-    data_backup = data->ast;
+    data_backup = nlohmann::json(data->ast).dump();
     return runAST(data->ast, ctx);
 }
 
 void crash_handler() {
     ERROR("crash! last saved states");
-    std::string dump = data_backup.dump();
-    INFO("AST={}", dump);
+    INFO("AST={}", data_backup);
     _exit(1);
 }
 
@@ -93,18 +92,18 @@ void FuzzingAST::fuzzerDriver(AST initAST) {
     }
     newEdgeCnt = 0; // reset edge count
     while (true) {
-        if (scheduler.corpus.empty()) {
-            scheduler.corpus.emplace_back(std::make_shared<ASTData>());
-        }
-        std::shared_ptr<ASTData> newData;
+        // if (scheduler.corpus.empty()) {
+        //     scheduler.corpus.emplace_back(std::make_shared<ASTData>());
+        // }
         switch (scheduler.phase) {
         case MutationPhase::ExecutionGeneration: {
             // continue generation on current
-            newData =
+            std::shared_ptr<ASTData> newData =
                 std::make_shared<ASTData>(*scheduler.corpus[scheduler.idx]);
+            newData->ast.expressions.clear();
             generate_execution(newData, scheduler.ctx);
             // if fail to run, drop the result and do it again.
-            auto cacheNewEdgeCnt = newEdgeCnt;
+            const auto cacheNewEdgeCnt = newEdgeCnt;
             if (testOneInput(newData, scheduler.ctx) == 0) {
                 // TODO sync new edge corpus with coverage instance
                 scheduler.update(newEdgeCnt > cacheNewEdgeCnt,
@@ -113,13 +112,14 @@ void FuzzingAST::fuzzerDriver(AST initAST) {
             break;
         }
         case MutationPhase::FallbackOldCorpus: {
-            if (scheduler.corpus.size() > 1) {
+            if (scheduler.corpus.size() >= 2) {
                 // randomly fallback to one of first half of the corpus
                 scheduler.corpus.erase(scheduler.corpus.begin() +
                                        scheduler.idx);
-                scheduler.idx =
-                    std::uniform_int_distribution<>(0, scheduler.idx / 2)(rng);
-                scheduler.update(0, scheduler.corpus[scheduler.idx]->ast.declarations.size());
+                scheduler.idx = rng() % (scheduler.corpus.size() / 2);
+                scheduler.update(
+                    0,
+                    scheduler.corpus[scheduler.idx]->ast.declarations.size());
                 break;
             }
         }
@@ -127,11 +127,9 @@ void FuzzingAST::fuzzerDriver(AST initAST) {
         case MutationPhase::DeclarationMutation: {
             newEdgeCnt = 0; // reset edge count for declaration change
             // continue mutating on current
-            newData =
+            std::shared_ptr<ASTData> newData =
                 std::make_shared<ASTData>(*scheduler.corpus[scheduler.idx]);
-            do {
-                mutate_declaration(newData, scheduler.ctx);
-            } while (testOneInput(newData, scheduler.ctx) != 0);
+            mutate_declaration(newData, scheduler.ctx);
             scheduler.update(0, newData->ast.declarations.size());
             scheduler.corpus.emplace_back(newData);
             scheduler.idx = scheduler.corpus.size() - 1;

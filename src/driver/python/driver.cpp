@@ -3,6 +3,7 @@
 #include "ast.hpp"
 #include "log.hpp"
 #include "pythonrun.h"
+#include "timeOutRunner.hpp"
 #include <fstream>
 #include <iostream>
 #include <serialization.hpp>
@@ -100,12 +101,8 @@ void nodeToPython(std::ostringstream &out, const ASTNode &node, const AST &ast,
         out << ")";
 
         TypeID retType = std::get<int64_t>(node.fields[1].val);
-        if (retType != -1) {
-            out << " -> " << getTypeName(retType, ast, ctx);
-        }
-
-        out << ":\n";
-        out << std::string((indentLevel + 1) * 4, ' ') << "pass";
+        out << " -> " << getTypeName(retType, ast, ctx) << ":\n";
+        scopeToPython(out, node.scope, ast, ctx, indentLevel + 1);
         break;
     }
     case ASTNodeKind::Class: {
@@ -158,13 +155,17 @@ void scopeToPython(std::ostringstream &out, ScopeID sid, const AST &ast,
                    const BuiltinContext &ctx, int indentLevel) {
     if (sid == -1)
         return;
-
+    out << std::string(indentLevel * 4, ' ') << "# scope " << sid << '\n';
     const ASTScope &scope = ast.scopes[sid];
     bool empty = true;
 
     for (NodeID id : scope.declarations) {
-        nodeToPython(out, ast.declarations.at(id), ast, ctx, indentLevel);
-        empty = false;
+        const auto &decl = ast.declarations.at(id);
+        // all function are under class, which will be rendered in class handler
+        if (decl.kind != ASTNodeKind::Function) {
+            nodeToPython(out, ast.declarations.at(id), ast, ctx, indentLevel);
+            empty = false;
+        }
     }
     for (NodeID id : scope.expressions) {
         nodeToPython(out, ast.expressions.at(id), ast, ctx, indentLevel);
@@ -186,7 +187,7 @@ int FuzzingAST::runAST(const AST &ast, const BuiltinContext &ctx, bool echo) {
 
     PyObject *code = Py_CompileString(re.c_str(), "<ast>", Py_file_input);
     if (!code || PyErr_Occurred()) {
-#ifndef QUIET
+#ifndef DISABLE_DEBUG_OUTPUT
         PyErr_Print();
 #endif
         PyErr_Clear();
@@ -197,16 +198,12 @@ int FuzzingAST::runAST(const AST &ast, const BuiltinContext &ctx, bool echo) {
     PyObject *name = PyUnicode_FromString("__main__");
     PyDict_SetItemString(dict, "__name__", name);
     PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
-    PyEval_EvalCode(code, dict, dict);
+    int ret = evalWithTimeOut(code, dict, 500);
     Py_DECREF(code);
     Py_DECREF(dict);
     Py_DECREF(name);
-    if (PyErr_Occurred()) {
-#ifndef QUIET
-        PyErr_Print();
-#endif
-        PyErr_Clear();
-        return -1;
+    if (ret < 0) {
+        return ret;
     }
     return 0;
 }
@@ -222,6 +219,7 @@ int FuzzingAST::initialize(int *argc, char ***argv) {
     sstr << driverPyStream.rdbuf();
     driverPyConent = sstr.str();
     driverPyStream.close();
+    installSignalHandler();
 
     Py_Initialize();
     return 0;
@@ -258,21 +256,13 @@ void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,
     TypeID bytesType = std::find(ctx.types.begin(), ctx.types.end(), "bytes") -
                        ctx.types.begin();
     data->ast.declarations.push_back(
-        ASTNode{ASTNodeKind::DeclareVar,
-                ctx.strID,
-                {ASTNodeValue{"str_a"}, ASTNodeValue{std::string("\"\"")}}});
+        {ASTNodeKind::DeclareVar, ctx.strID, {{"str_a"}, {"\"\""}}});
     data->ast.declarations.push_back(
-        ASTNode{ASTNodeKind::DeclareVar,
-                ctx.strID,
-                {ASTNodeValue{"str_b"}, ASTNodeValue{std::string("\"\"")}}});
+        {ASTNodeKind::DeclareVar, ctx.strID, {{"str_b"}, {"\"\""}}});
     data->ast.declarations.push_back(
-        ASTNode{ASTNodeKind::DeclareVar,
-                bytesType,
-                {ASTNodeValue{"byte_a"}, ASTNodeValue{std::string("b\"\"")}}});
+        {ASTNodeKind::DeclareVar, bytesType, {{"byte_a"}, {"b\"\""}}});
     data->ast.declarations.push_back(
-        ASTNode{ASTNodeKind::DeclareVar,
-                ctx.intID,
-                {ASTNodeValue{"int_a"}, ASTNodeValue{int64_t(0)}}});
+        {ASTNodeKind::DeclareVar, ctx.intID, {{"int_a"}, {0}}});
     data->ast.scopes[0].declarations.resize(4);
     data->ast.scopes[0].variables.resize(4);
     data->ast.scopes[0].declarations[0] = 0;
@@ -292,8 +282,11 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     bool empty = true;
 
     for (NodeID id : scope.declarations) {
-        nodeToPython(script, ast.declarations.at(id), ast, ctx, 0);
-        empty = false;
+        const auto &node = ast.declarations.at(id);
+        if (node.kind != ASTNodeKind::Function) {
+            nodeToPython(script, ast.declarations.at(id), ast, ctx, 0);
+            empty = false;
+        }
     }
 
     if (empty)
@@ -303,7 +296,9 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
 
     PyObject *code = Py_CompileString(re.c_str(), "<ast>", Py_file_input);
     if (PyErr_Occurred()) {
+#ifndef DISABLE_DEBUG_OUTPUT
         PyErr_Print();
+#endif
         PyErr_Clear();
         ERROR("Failed to compile decl code block:\n{}", re);
         return -1;
@@ -315,7 +310,9 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
     PyEval_EvalCode(code, dict, dict);
     if (PyErr_Occurred()) {
+#ifndef DISABLE_DEBUG_OUTPUT
         PyErr_Print();
+#endif
         PyErr_Clear();
         ERROR("Failed to run decl code block:\n{}", re);
         return -1;

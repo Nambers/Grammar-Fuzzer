@@ -8,16 +8,13 @@ extern uint32_t newEdgeCnt;
 
 void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
                                             size_t currentAstSize) {
-    std::cout << "current phrase : " << static_cast<int>(phase)
-              << ", new edge count: " << newEdgeCnt
-              << ", no edge count: " << noEdgeCount
-              << ", fail threshold: " << execFailureThreshold()
-              << ", exec stall count: " << execStallCount
-              << ", current AST size: " << currentAstSize << "\n";
+    INFO("current phrase: {}, new edge count: {}, no edge count: {}, "
+         "fail threshold: {}, exec stall count: {}, current AST size: {}",
+         static_cast<int>(phase), newEdgeCnt, noEdgeCount,
+         execFailureThreshold(), execStallCount, currentAstSize);
     if (gotNewEdge) {
         noEdgeCount = 0;
         execStallCount = 0;
-        phase = MutationPhase::ExecutionGeneration;
         return;
     }
 
@@ -36,7 +33,10 @@ void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
                 INFO("switching to declaration mutation phase due to no new "
                      "edge "
                      "found\n");
-                phase = MutationPhase::DeclarationMutation;
+                if (currentAstSize == maxNumDeclarations)
+                    phase = MutationPhase::FallbackOldCorpus;
+                else
+                    phase = MutationPhase::DeclarationMutation;
             }
         }
         break;

@@ -6,14 +6,54 @@ using namespace FuzzingAST;
 
 extern std::mt19937 rng;
 
-void collectVar(const std::shared_ptr<ASTData> &ast, const ASTScope &scope,
-                std::vector<std::string> &vars, TypeID type) {
+static void collectVar(const std::shared_ptr<ASTData> &ast,
+                       const ASTScope &scope, std::vector<std::string> &vars,
+                       TypeID type) {
     for (const NodeID &varID : scope.variables) {
         const ASTNode &decl = ast->ast.declarations[varID];
         // type 0 is object (any)
-        if (decl.type == type || type == 0)
+        if (decl.type == type || type == 0 || decl.type == 0) {
             vars.push_back(std::get<std::string>(decl.fields[0].val));
+        }
     }
+}
+
+static const std::string &
+pickRandomVar(std::uniform_int_distribution<int> &pickVar,
+              const std::shared_ptr<ASTData> &ast, const ASTScope &scope,
+              const ASTScope &parentScope, int parentLastVar) {
+    auto pickID = pickVar(rng);
+    NodeID varID;
+    if (scope.parent != -1 && pickID <= parentLastVar) {
+        varID = parentScope.variables[pickID];
+    } else {
+        pickID -= (parentLastVar + 1);
+        varID = scope.variables[pickID];
+    }
+    return std::get<std::string>(ast->ast.declarations[varID].fields[0].val);
+}
+
+static inline const FunctionSignature &
+pickRandomFunc(std::uniform_int_distribution<int> &pickFunc,
+               const ASTScope &scope, const ASTScope &parentScope,
+               int parentLastFunc, const BuiltinContext &ctx,
+               std::string &name) {
+    auto pickID = pickFunc(rng);
+    if (pickID < ctx.builtinsFuncs.size()) {
+        auto it = std::next(ctx.builtinsFuncs.begin(), pickID);
+        name = it->first;
+        return it->second;
+    }
+    pickID -= ctx.builtinsFuncs.size();
+    if (scope.parent != -1 && pickID <= parentLastFunc) {
+        auto target = std::next(parentScope.funcSignatures.begin(), pickID);
+        name = target->first;
+        return target->second;
+    }
+    auto target =
+        std::next(scope.funcSignatures.begin(), pickID - (parentLastFunc + 1));
+    name = target->first;
+    return target->second;
 }
 
 int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
@@ -21,22 +61,22 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                                          const BuiltinContext &ctx) {
     constexpr int NUM_GEN = 10; // TODO
     ASTScope &scope = ast->ast.scopes[scopeID];
-    scope.expressions.resize(NUM_GEN, -1);
+    scope.expressions.resize(NUM_GEN);
     std::uniform_int_distribution<int> pickExec(
         static_cast<int>(EXEC_NODE_START), static_cast<int>(EXEC_NODE_END));
     std::uniform_int_distribution<int> pickBinaryOp(0, BINARY_OPS.size() - 1);
     std::uniform_int_distribution<int> pickUnaryOp(0, UNARY_OPS.size() - 1);
-    ASTScope *parentScope;
+    // placeholder as scope
+    const ASTScope &parentScope =
+        (scope.parent != -1) ? ast->ast.scopes[scope.parent] : scope;
     int parentLastVar = -1, parentLastFunc = -1,
         totalVars = scope.variables.size(),
         totalFuncs = scope.funcSignatures.size() + ctx.builtinsFuncs.size();
     if (scope.parent != -1) {
-        parentScope = &ast->ast.scopes[scope.parent];
-        totalVars += parentScope->variables.size();
-        parentLastVar = parentScope->variables.size() - 1;
-        parentLastFunc = parentScope->funcSignatures.size() - 1;
-        totalVars += parentScope->variables.size();
-        totalFuncs += parentScope->funcSignatures.size();
+        parentLastVar = parentScope.variables.size() - 1;
+        parentLastFunc = parentScope.funcSignatures.size() - 1;
+        totalVars += parentScope.variables.size();
+        totalFuncs += parentScope.funcSignatures.size();
     }
     std::uniform_int_distribution<int> pickVar(0, totalVars - 1);
     std::uniform_int_distribution<int> pickFunc(0, totalFuncs - 1);
@@ -44,50 +84,14 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
         MutationState state = MutationState::STATE_REROLL;
         while (state != MutationState::STATE_OK) {
             state = MutationState::STATE_OK;
-            auto nodeId = scope.expressions[i];
-            if (nodeId == -1) {
-                nodeId = static_cast<NodeID>(ast->ast.expressions.size());
-                ast->ast.expressions.emplace_back();
-                scope.expressions[i] = nodeId;
-            }
+            auto &nodeId = scope.expressions[i];
+            nodeId = static_cast<NodeID>(ast->ast.expressions.size());
+            ast->ast.expressions.emplace_back();
+            scope.expressions[i] = nodeId;
             auto &curr = ast->ast.expressions[nodeId];
             ASTNodeKind pick = static_cast<ASTNodeKind>(pickExec(rng));
 
             curr.kind = pick;
-
-            auto pickRandomVar = [&]() -> std::string {
-                auto pickID = pickVar(rng);
-                NodeID varID;
-                if (parentScope && pickID <= parentLastVar) {
-                    varID = parentScope->variables[pickID];
-                } else {
-                    pickID -= (parentLastVar + 1);
-                    varID = scope.variables[pickID];
-                }
-                return std::get<std::string>(
-                    ast->ast.declarations[varID].fields[0].val);
-            };
-
-            auto pickRandomFunc =
-                [&](std::string &name) -> const FunctionSignature & {
-                auto pickID = pickFunc(rng);
-                if(pickID < ctx.builtinsFuncs.size()) {
-                    auto it = std::next(ctx.builtinsFuncs.begin(), pickID);
-                    name = it->first;
-                    return it->second;
-                }
-                pickID -= ctx.builtinsFuncs.size();
-                if (parentScope && pickID <= parentLastFunc) {
-                    auto target =
-                        std::next(parentScope->funcSignatures.begin(), pickID);
-                    name = target->first;
-                    return target->second;
-                }
-                auto target = std::next(scope.funcSignatures.begin(),
-                                        pickID - (parentLastFunc + 1));
-                name = target->first;
-                return target->second;
-            };
 
             switch (pick) {
             case ASTNodeKind::Assign: {
@@ -95,8 +99,10 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                     state = MutationState::STATE_REROLL;
                     break;
                 }
-                curr.fields = {ASTNodeValue{pickRandomVar()},
-                               ASTNodeValue{pickRandomVar()}};
+                curr.fields = {{pickRandomVar(pickVar, ast, scope, parentScope,
+                                              parentLastVar)},
+                               {pickRandomVar(pickVar, ast, scope, parentScope,
+                                              parentLastVar)}};
                 break;
             }
             case ASTNodeKind::Call: {
@@ -106,24 +112,34 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                 }
                 curr.fields.resize(1);
                 std::string funcName;
-                auto &func = pickRandomFunc(funcName);
-                curr.fields[0] = ASTNodeValue{std::move(funcName)};
+                auto &func = pickRandomFunc(pickFunc, scope, parentScope,
+                                            parentLastFunc, ctx, funcName);
+                curr.fields[0] = {std::move(funcName)};
                 // check if params can be satisfied
                 std::vector<std::string> params;
                 params.clear();
+                if (func.selfType != -1) {
+                    // if it's a method, we need to add self
+                    collectVar(ast, scope, params, func.selfType);
+                    if (params.empty()) {
+                        state = MutationState::STATE_REROLL;
+                        break;
+                    } else {
+                        curr.fields.push_back({params[rng() % params.size()]});
+                        params.clear();
+                    }
+                }
                 for (const TypeID paramType : func.paramTypes) {
-                    if (parentScope) {
+                    if (scope.parent != -1) {
                         // check parent scope first
-                        collectVar(ast, *parentScope, params, paramType);
+                        collectVar(ast, parentScope, params, paramType);
                     }
                     collectVar(ast, scope, params, paramType);
                     if (params.empty()) {
                         state = MutationState::STATE_REROLL;
                         break;
                     } else {
-                        curr.fields.push_back(ASTNodeValue{
-                            std::move(params[std::uniform_int_distribution<int>(
-                                0, params.size() - 1)(rng)])});
+                        curr.fields.push_back({params[rng() % params.size()]});
                         params.clear();
                     }
                 }
@@ -141,9 +157,7 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                     state = MutationState::STATE_REROLL;
                     break;
                 } else {
-                    curr.fields = {ASTNodeValue{
-                        std::move(params[std::uniform_int_distribution<int>(
-                            0, params.size() - 1)(rng)])}};
+                    curr.fields.push_back({params[rng() % params.size()]});
                 }
                 break;
             }
@@ -153,10 +167,12 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                     break;
                 }
                 // a = b op c
-                curr.fields = {ASTNodeValue{pickRandomVar()},
-                               ASTNodeValue{pickRandomVar()},
-                               ASTNodeValue{BINARY_OPS[pickBinaryOp(rng)]},
-                               ASTNodeValue{int64_t(1)}};
+                curr.fields = {{pickRandomVar(pickVar, ast, scope, parentScope,
+                                              parentLastVar)},
+                               {pickRandomVar(pickVar, ast, scope, parentScope,
+                                              parentLastVar)},
+                               {BINARY_OPS[pickBinaryOp(rng)]},
+                               {1}};
                 break;
             }
             case ASTNodeKind::UnaryOp: {
@@ -165,9 +181,11 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                     break;
                 }
                 // a = op b
-                curr.fields = {ASTNodeValue{pickRandomVar()},
-                               ASTNodeValue{UNARY_OPS[pickUnaryOp(rng)]},
-                               ASTNodeValue{pickRandomVar()}};
+                curr.fields = {{pickRandomVar(pickVar, ast, scope, parentScope,
+                                              parentLastVar)},
+                               {UNARY_OPS[pickUnaryOp(rng)]},
+                               {pickRandomVar(pickVar, ast, scope, parentScope,
+                                              parentLastVar)}};
                 break;
             }
             default:

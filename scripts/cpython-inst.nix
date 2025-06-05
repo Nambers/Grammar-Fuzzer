@@ -12,7 +12,7 @@ pkgs.mkShell {
     lcov
   ];
   shellHook = ''
-    export ASAN_OPTIONS='detect_leaks=0';
+    export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0;
     export CC="${pkgs.clang}/bin/clang";
     export CXX="${pkgs.clang}/bin/clang++";
     export CLANG_BIN="${pkgs.clang}/bin";
@@ -21,5 +21,6 @@ pkgs.mkShell {
     export CPYTHON_SRC="${cpython-inst}/.build/source";
     export CPYTHON_LIB="${cpython-inst}/lib";
     export PATH="${cpython-inst}/bin:$PATH";
+    export COMPILER_RT_LIBC="${pkgs.llvmPackages.compiler-rt-libc}/lib/linux";
   '';
 }

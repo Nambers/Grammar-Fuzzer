@@ -10,6 +10,7 @@ find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 set(AST_SOURCES
   ${PROJECT_SOURCE_DIR}/../src/ast.cpp
   ${PROJECT_SOURCE_DIR}/../src/driver/python/driver.cpp
+    ${PROJECT_SOURCE_DIR}/../src/driver/python/timeOutRunner.cpp
   ${PROJECT_SOURCE_DIR}/driver/python/test.cpp
 )
 

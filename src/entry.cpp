@@ -14,12 +14,7 @@
 using namespace FuzzingAST;
 using json = nlohmann::json;
 
-extern uint8_t *snapshot;
 extern "C" void __attribute__((visibility("default"))) LLVMFuzzerFinalize() {
-	if (snapshot) {
-		delete[] snapshot;
-		snapshot = nullptr;
-	}
 	finalize();
 	INFO("Fuzzer finalized.");
 }

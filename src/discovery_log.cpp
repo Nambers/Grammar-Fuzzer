@@ -6,7 +6,7 @@
 extern uint32_t newEdgeCnt;
 
 extern "C" void __sanitizer_cov_trace_pc_guard_init(uint32_t *start,
-                                                    uint32_t *stop) {
+                                                      uint32_t *stop) {
     if (start == stop || *start)
         return; // already initialized
     static uint32_t N;

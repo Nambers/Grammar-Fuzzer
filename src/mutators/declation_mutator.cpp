@@ -7,9 +7,8 @@
 using namespace FuzzingAST;
 
 extern std::mt19937 rng;
-
-extern "C" size_t LLVMFuzzerMutate(uint8_t *Data, size_t Size, size_t MaxSize);
-
+extern void havoc(std::string &data, std::size_t max_sz,
+                  std::size_t max_havoc_rounds = 16);
 // constexpr std::array TARGET_LIBS = {"math",
 //                                     "random",
 //                                     "os",
@@ -99,21 +98,15 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
         static char mutateBuf[50];
         if (node.kind == ASTNodeKind::DeclareVar) {
             if (node.type == ctx.strID) {
-                std::string &strVal = std::get<std::string>(node.fields[1].val);
-                strncpy(mutateBuf, strVal.c_str() + 1, strVal.size() - 2);
-                mutateBuf[strVal.size() - 2] = '\0'; // remove quotes
-                // LLVMFuzzerMutate(reinterpret_cast<uint8_t *>(mutateBuf),
-                //                  strlen(mutateBuf), sizeof(mutateBuf));
-                // TODO
-                node.fields[1].val = "\"" + std::string(mutateBuf) + "\"";
+                havoc(std::get<std::string>(node.fields[1].val), 50);
             } else if (node.type == ctx.intID) {
-                static std::uniform_int_distribution<uint64_t> pickNum(
-                    0, UINT64_MAX);
-                node.fields[1].val = std::to_string(pickNum(rng));
+                static std::uniform_int_distribution<int64_t> pickNum(
+                    0, INT64_MAX);
+                node.fields[1].val = pickNum(rng);
             } else if (node.type == ctx.floatID) {
                 static std::uniform_real_distribution<double> pickFloat(-1e6,
                                                                         1e6);
-                node.fields[1].val = std::to_string(pickFloat(rng));
+                node.fields[1].val = pickFloat(rng);
             } else if (node.type == ctx.boolID) {
                 node.fields[1].val = (rng() % 2) == 0;
             }
@@ -154,7 +147,7 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
             std::vector<const std::pair<const std::string, FunctionSignature> *>
                 cands;
             for (const auto &kv : ctx.builtinsFuncs)
-                if (kv.first.rfind(prefix, 0) == 0) // starts_with prefix
+                if (kv.first.starts_with(prefix)) // starts_with prefix
                     cands.push_back(&kv);
 
             if (cands.empty()) {
@@ -236,7 +229,7 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                     scope.types.size() - 1 + SCOPE_MAX_TYPE * (sid + 1);
                 ast->ast.scopes.push_back({sid, retType});
                 fun.fields.push_back({"__init__"}); // <name>
-                fun.fields.push_back({retType});    // <ret‑type>
+                fun.fields.push_back({-1});         // <ret‑type>
                 const auto &sig =
                     ctx.builtinsFuncs.at(initName); // get signature
                 std::string arg = "a";
@@ -252,7 +245,7 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
             }
 
             scope.declarations.push_back(clsID);
-            
+
             ast->ast.declarations.push_back(std::move(cls));
             break;
         }
@@ -272,6 +265,7 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                         var.type = (scope.parent + 1) * SCOPE_MAX_TYPE + tid;
                         var.fields[1].val = parentScope->types[tid] + "()";
                     } else {
+                        tid -= parentScope->types.size();
                         var.type = tid;
                         var.fields[1].val = ctx.types[tid] + "()";
                     }
@@ -281,8 +275,9 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                 }
             }
             bumpIdentifier(ast->ast.nameCnt);
-            ast->ast.declarations.push_back(std::move(var));
             scope.variables.push_back(varID);
+            scope.declarations.push_back(varID);
+            ast->ast.declarations.push_back(std::move(var));
             break;
         }
         case MutationPick::AddImport: {

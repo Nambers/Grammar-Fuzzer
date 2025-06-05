@@ -100,10 +100,6 @@ class AST {
 class ASTData {
   public:
     AST ast;
-
-    ASTData() = default;
-    ASTData(const ASTData &other) = default;
-    ASTData &operator=(const ASTData &other) = default;
 };
 
 const std::string &getTypeName(TypeID tid, const AST &scope,

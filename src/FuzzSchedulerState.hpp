@@ -23,8 +23,8 @@ class FuzzSchedulerState {
 
 	// if failed to find new edge for 5 mutated declaration in a row, fallback
 	size_t maxDeclFailures = 5;
-	// max 5 variables / type declarations
-	size_t maxNumDeclarations = 10;
+	// max variables / type declarations in all scopes
+	size_t maxNumDeclarations = 20;
 
 	BuiltinContext ctx;
 	FuzzSchedulerState() = default;
