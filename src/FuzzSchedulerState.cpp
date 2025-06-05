@@ -33,7 +33,7 @@ void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
                 INFO("switching to declaration mutation phase due to no new "
                      "edge "
                      "found\n");
-                if (currentAstSize == maxNumDeclarations)
+                if (currentAstSize >= maxNumDeclarations)
                     phase = MutationPhase::FallbackOldCorpus;
                 else
                     phase = MutationPhase::DeclarationMutation;
@@ -51,6 +51,5 @@ void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
 
 size_t FuzzingAST::FuzzSchedulerState::execFailureThreshold() const {
     double base = std::log2(static_cast<double>(newEdgeCnt) + 4.0);
-    double adjusted = std::sqrt(base); // optional: log2(base + 1.0)
-    return static_cast<size_t>(std::clamp(adjusted * 20.0, 100.0, 2000.0));
+    return static_cast<size_t>(std::clamp(base * 50.0, 100.0, 2000.0));
 }

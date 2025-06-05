@@ -91,9 +91,7 @@ def collect_class_methods(cls, types, qualified_name=None):
     return methods
 
 
-def collect_all(enable_builtins=False):
-    results = {"funcs": {}, "types": ["object"]}
-
+def collect_all(enable_builtins=False, results={"funcs": {}, "types": []}):
     if enable_builtins:
         for name in dir(builtins):
             obj = getattr(builtins, name)
@@ -102,7 +100,7 @@ def collect_all(enable_builtins=False):
 
     for name, obj in globals().items():
         if inspect.isclass(obj):
-            results["types"].append(name)      
+            results["types"].append(name)
 
     if enable_builtins:
         for name in dir(builtins):

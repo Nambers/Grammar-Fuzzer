@@ -45,12 +45,12 @@ class FunctionSignature {
 
 class BuiltinContext {
   public:
-    std::unordered_map<std::string, FunctionSignature> builtinsFuncs;
-    std::vector<std::string> types;
-    TypeID strID;
-    TypeID intID;
-    TypeID floatID;
-    TypeID boolID;
+    std::unordered_map<std::string, FunctionSignature> builtinsFuncs = {};
+    std::vector<std::string> types = {};
+    TypeID strID = -1;
+    TypeID intID = -1;
+    TypeID floatID = -1;
+    TypeID boolID = -1;
 };
 
 class ASTNodeValue {
@@ -71,7 +71,7 @@ class ASTNode {
                 [3] ... as member functions
     function:
      */
-    std::vector<ASTNodeValue> fields;
+    std::vector<ASTNodeValue> fields = {};
     ScopeID scope = -1;
 };
 
@@ -79,19 +79,19 @@ class ASTScope {
   public:
     ScopeID parent = -1;
     TypeID retType = -1;
-    std::vector<NodeID> declarations;
-    std::vector<NodeID> expressions;
-    std::vector<std::string> types;
-    std::vector<int> variables;
-    std::unordered_map<std::string, FunctionSignature> funcSignatures;
+    std::vector<NodeID> declarations = {};
+    std::vector<NodeID> expressions = {};
+    std::vector<std::string> types = {};
+    std::vector<int> variables = {};
+    std::unordered_map<std::string, FunctionSignature> funcSignatures = {};
 };
 
 class AST {
   public:
     std::string nameCnt = "a";
-    std::vector<ASTScope> scopes;
-    std::vector<ASTNode> declarations;
-    std::vector<ASTNode> expressions;
+    std::vector<ASTScope> scopes = {};
+    std::vector<ASTNode> declarations = {};
+    std::vector<ASTNode> expressions = {};
 
     // generate main block
     AST() : scopes({ASTScope()}) {}

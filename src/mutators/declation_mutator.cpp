@@ -89,13 +89,10 @@ static std::uniform_int_distribution<int>
 static std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
 
 int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
-                                  const ScopeID sid,
+                                  const ScopeID sid, ASTScope &scope,
                                   const BuiltinContext &ctx) {
-    ASTScope &scope = ast->ast.scopes[sid];
-    const std::vector<NodeID> &nodes = scope.declarations;
-    for (NodeID i : nodes) {
+    for (NodeID i : scope.declarations) {
         auto &node = ast->ast.declarations[i];
-        static char mutateBuf[50];
         if (node.kind == ASTNodeKind::DeclareVar) {
             if (node.type == ctx.strID) {
                 havoc(std::get<std::string>(node.fields[1].val), 50);
@@ -114,9 +111,9 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
     }
     MutationState state = MutationState::STATE_REROLL;
     size_t typesCnt = scope.types.size() + ctx.types.size();
-    ASTScope *parentScope = nullptr;
+    const ASTScope &parentScope =
+        scope.parent != -1 ? ast->ast.scopes[scope.parent] : scope;
     if (scope.parent != -1) {
-        parentScope = &ast->ast.scopes[scope.parent];
         typesCnt += ast->ast.scopes[scope.parent].types.size();
     }
     std::uniform_int_distribution<size_t> pickType(0, typesCnt - 1);
@@ -177,7 +174,8 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                 fun.fields.push_back({pt});
             }
 
-            scope.funcSignatures[fnName] = sig;
+            // will be added in reflectObject
+            // scope.funcSignatures[fnName] = sig;
             ast->ast.declarations.push_back(std::move(fun));
 
             clsNode.fields.push_back({funID}); // push back as member function
@@ -186,7 +184,7 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
 
         /* ----------  AddClass  ---------- */
         case MutationPick::AddClass: {
-            NodeID clsID = static_cast<NodeID>(ast->ast.declarations.size());
+            NodeID clsID = ast->ast.declarations.size();
             ASTNode cls;
             cls.kind = ASTNodeKind::Class;
 
@@ -201,10 +199,11 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                     inheritName = scope.types[tid];
                 } else {
                     tid -= scope.types.size();
-                    if (parentScope && tid < parentScope->types.size()) {
-                        inheritName = parentScope->types[tid];
+                    if (scope.parent != -1 && tid < parentScope.types.size()) {
+                        inheritName = parentScope.types[tid];
                     } else {
-                        tid -= (parentScope ? parentScope->types.size() : 0);
+                        tid -=
+                            (scope.parent != -1 ? parentScope.types.size() : 0);
                         if (tid < ctx.types.size())
                             inheritName = ctx.types[tid];
                     }
@@ -213,9 +212,10 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                     cls.fields.push_back({inheritName});
             }
 
+            // will be add in reflectObject
+            // scope.types.push_back(std::get<std::string>(cls.fields[0].val));
             // sentinel
             cls.fields.push_back({-1});
-            scope.types.push_back(std::get<std::string>(cls.fields[0].val));
 
             // check if has init class, if so, add it as function and do super
             // call
@@ -239,8 +239,10 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                     fun.fields.push_back({pt});
                 }
                 cls.fields.push_back({funID}); // push back as member function
-                scope.funcSignatures[std::get<std::string>(cls.fields[0].val) +
-                                     ".__init__"] = sig;
+                // will be added in reflectObject
+                // scope.funcSignatures[std::get<std::string>(cls.fields[0].val)
+                // +
+                //                      ".__init__"] = sig;
                 ast->ast.declarations.push_back(std::move(fun));
             }
 
@@ -254,6 +256,7 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
             ASTNode var;
             var.kind = ASTNodeKind::DeclareVar;
             var.fields = {{ast->ast.nameCnt}, {}};
+            bumpIdentifier(ast->ast.nameCnt);
             TypeID tid = pickType(rng);
             if (tid < scope.types.size()) {
                 var.type = tid + SCOPE_MAX_TYPE * (sid + 1);
@@ -261,11 +264,11 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
             } else {
                 tid -= scope.types.size();
                 if (scope.parent != -1) {
-                    if (tid < parentScope->types.size()) {
+                    if (tid < parentScope.types.size()) {
                         var.type = (scope.parent + 1) * SCOPE_MAX_TYPE + tid;
-                        var.fields[1].val = parentScope->types[tid] + "()";
+                        var.fields[1].val = parentScope.types[tid] + "()";
                     } else {
-                        tid -= parentScope->types.size();
+                        tid -= parentScope.types.size();
                         var.type = tid;
                         var.fields[1].val = ctx.types[tid] + "()";
                     }
@@ -274,7 +277,6 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                     var.fields[1].val = ctx.types[tid] + "()";
                 }
             }
-            bumpIdentifier(ast->ast.nameCnt);
             scope.variables.push_back(varID);
             scope.declarations.push_back(varID);
             ast->ast.declarations.push_back(std::move(var));

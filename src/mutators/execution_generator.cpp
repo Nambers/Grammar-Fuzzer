@@ -61,14 +61,14 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                                          const BuiltinContext &ctx) {
     constexpr int NUM_GEN = 10; // TODO
     ASTScope &scope = ast->ast.scopes[scopeID];
-    scope.expressions.resize(NUM_GEN);
+    scope.expressions.resize(NUM_GEN, -1);
     std::uniform_int_distribution<int> pickExec(
         static_cast<int>(EXEC_NODE_START), static_cast<int>(EXEC_NODE_END));
     std::uniform_int_distribution<int> pickBinaryOp(0, BINARY_OPS.size() - 1);
     std::uniform_int_distribution<int> pickUnaryOp(0, UNARY_OPS.size() - 1);
     // placeholder as scope
     const ASTScope &parentScope =
-        (scope.parent != -1) ? ast->ast.scopes[scope.parent] : scope;
+        scope.parent != -1 ? ast->ast.scopes[scope.parent] : scope;
     int parentLastVar = -1, parentLastFunc = -1,
         totalVars = scope.variables.size(),
         totalFuncs = scope.funcSignatures.size() + ctx.builtinsFuncs.size();
@@ -82,15 +82,17 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
     std::uniform_int_distribution<int> pickFunc(0, totalFuncs - 1);
     for (int i = 0; i < NUM_GEN; ++i) {
         MutationState state = MutationState::STATE_REROLL;
-        while (state != MutationState::STATE_OK) {
-            state = MutationState::STATE_OK;
-            auto &nodeId = scope.expressions[i];
+        auto &nodeId = scope.expressions[i];
+        if (nodeId == -1) {
             nodeId = static_cast<NodeID>(ast->ast.expressions.size());
             ast->ast.expressions.emplace_back();
             scope.expressions[i] = nodeId;
-            auto &curr = ast->ast.expressions[nodeId];
+        }
+        auto &curr = ast->ast.expressions[nodeId];
+        int attempts = 0;
+        while (state == MutationState::STATE_REROLL && ++attempts < 5000) {
+            state = MutationState::STATE_OK;
             ASTNodeKind pick = static_cast<ASTNodeKind>(pickExec(rng));
-
             curr.kind = pick;
 
             switch (pick) {
@@ -116,8 +118,7 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                                             parentLastFunc, ctx, funcName);
                 curr.fields[0] = {std::move(funcName)};
                 // check if params can be satisfied
-                std::vector<std::string> params;
-                params.clear();
+                std::vector<std::string> params = {};
                 if (func.selfType != -1) {
                     // if it's a method, we need to add self
                     collectVar(ast, scope, params, func.selfType);
@@ -150,14 +151,12 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                     state = MutationState::STATE_REROLL;
                     break;
                 }
-                std::vector<std::string> params;
-                params.clear();
+                std::vector<std::string> params = {};
                 collectVar(ast, scope, params, scope.retType);
                 if (params.empty()) {
                     state = MutationState::STATE_REROLL;
-                    break;
                 } else {
-                    curr.fields.push_back({params[rng() % params.size()]});
+                    curr.fields = {{params[rng() % params.size()]}};
                 }
                 break;
             }
@@ -193,6 +192,10 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                       static_cast<int>(pick));
                 break;
             }
+        }
+        if (attempts >= 5000) {
+            scope.expressions.resize(i);
+            break;
         }
     }
     return 0;

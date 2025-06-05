@@ -9,9 +9,7 @@ int FuzzingAST::generate_execution(const std::shared_ptr<ASTData> &ast,
                                    const BuiltinContext &ctx) {
     for (ScopeID sid = 0; sid < ast->ast.scopes.size(); ++sid) {
         ast->ast.scopes[sid].expressions.clear();
-        if (!ast->ast.scopes[sid].declarations.empty()) {
-            generate_execution_block(ast, sid, ctx);
-        }
+        generate_execution_block(ast, sid, ctx);
     }
     return 0;
 }
@@ -22,7 +20,7 @@ int FuzzingAST::mutate_declaration(const std::shared_ptr<ASTData> &ast,
         ASTScope scope;
         do {
             scope = ast->ast.scopes[sid];
-            mutate_expression(ast, sid, ctx);
+            mutate_expression(ast, sid, scope, ctx);
         } while (reflectObject(ast->ast, scope, ctx) != 0);
         ast->ast.scopes[sid] = scope;
     }
