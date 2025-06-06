@@ -60,6 +60,7 @@ int evalWithTimeOut(PyObject *codeObj, PyObject *globals, int timeout_ms) {
         return 0;
     } else {
         clear_timeout(); // just in case
+        PyErr_SetString(PyExc_TimeoutError, "Execution timed out. (longjmp)");
         PyErr_Clear();
         ERROR("Timeout during PyEval_EvalCode.");
         return -2;

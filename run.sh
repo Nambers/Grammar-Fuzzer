@@ -8,7 +8,7 @@ BUILD_COV_PATH=$COV_PATH/build
 mkdir -p corpus/tmp corpus/queue corpus/done corpus/saved
 
 echo "[run.sh] Cleaning old corpus..."
-rm -f corpus/tmp/* corpus/queue/* corpus/done/* corpus/saved/*
+rm -f corpus/tmp/* corpus/queue/* corpus/done/*
 
 cleanup() {
     echo ""

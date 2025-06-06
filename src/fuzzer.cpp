@@ -1,5 +1,6 @@
 #include "fuzzer.hpp"
 #include "FuzzSchedulerState.hpp"
+#include "UI.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "emit.hpp"
@@ -31,6 +32,7 @@ int testOneInput(const std::shared_ptr<ASTData> &data,
 }
 
 void crash_handler() {
+    TUI::finalizeTUI();
     ERROR("crash! last saved states");
     INFO("AST={}", data_backup);
     fuzzerEmitCacheCorpus();
@@ -50,9 +52,9 @@ void sigint_handler(int signo) {
 AST FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
     AST ret = {};
     if (argc != NULL && argv != NULL) {
-        if(*argc >= 1 && std::strcmp((*argv)[0], "-load-saved") == 0){
+        if (*argc >= 1 && std::strcmp((*argv)[0], "-load-saved") == 0) {
             std::string savedPath = "corpus/saved/";
-            if(*argc == 2 && (*argv)[1] != nullptr) {
+            if (*argc == 2 && (*argv)[1] != nullptr) {
                 savedPath = (*argv)[1];
             }
             INFO("Loading saved corpus from: {}", savedPath);
@@ -82,6 +84,7 @@ void FuzzingAST::fuzzerDriver(AST initAST) {
         PANIC("Initial AST is not valid.");
     }
     newEdgeCnt = 0; // reset edge count
+    TUI::initTUI();
     while (true) {
         // if (scheduler.corpus.empty()) {
         //     scheduler.corpus.emplace_back(std::make_shared<ASTData>());
@@ -115,8 +118,9 @@ void FuzzingAST::fuzzerDriver(AST initAST) {
         case MutationPhase::FallbackOldCorpus: {
             if (scheduler.corpus.size() >= 2) {
                 // randomly fallback to one of first half of the corpus
-                scheduler.corpus.erase(scheduler.corpus.begin() +
-                                       scheduler.idx);
+                // maybe don't remove current one?
+                // scheduler.corpus.erase(scheduler.corpus.begin() +
+                //                        scheduler.idx);
                 scheduler.idx = rng() % (scheduler.corpus.size() / 2);
                 scheduler.update(
                     0,

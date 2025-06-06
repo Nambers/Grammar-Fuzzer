@@ -1,17 +1,19 @@
 #include "FuzzSchedulerState.hpp"
+#include "UI.hpp"
 #include "log.hpp"
 #include <cmath>
 
 using namespace FuzzingAST;
 
+constexpr int TUI_FREQ = 4;
+
 extern uint32_t newEdgeCnt;
 
 void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
                                             size_t currentAstSize) {
-    INFO("current phrase: {}, new edge count: {}, no edge count: {}, "
-         "fail threshold: {}, exec stall count: {}, current AST size: {}",
-         static_cast<int>(phase), newEdgeCnt, noEdgeCount,
-         execFailureThreshold(), execStallCount, currentAstSize);
+    static int tuiCounter = 0;
+    if (++tuiCounter % TUI_FREQ == 0)
+        TUI::writeTUI(*this, currentAstSize);
     if (gotNewEdge) {
         noEdgeCount = 0;
         execStallCount = 0;

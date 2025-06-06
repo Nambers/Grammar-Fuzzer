@@ -329,6 +329,9 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
 #endif
         PyErr_Clear();
         ERROR("Failed to run decl code block:\n{}", re);
+        Py_DECREF(code);
+        Py_DECREF(name);
+        Py_DECREF(dict);
         return -1;
     }
 

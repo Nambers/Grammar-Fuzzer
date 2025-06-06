@@ -19,6 +19,12 @@ WORK_DIR=$(readlink -f .)
 SCRIPT_DIR=$(readlink -f ./scripts)
 REAL_PYTHON_INCLUDE=$(readlink -f $CPYTHON_INCLUDE_PATH/python*/);
 
+INCLUDE_DIRS=(
+    "$REAL_PYTHON_INCLUDE"
+    "$REAL_PYTHON_INCLUDE/internal"
+    "build/_deps/ftxui-src/include"
+)
+
 # VSCode IntelliSense config
 cat > "$WORK_DIR/.vscode/c_cpp_properties.json" <<EOF
 {
@@ -27,8 +33,7 @@ cat > "$WORK_DIR/.vscode/c_cpp_properties.json" <<EOF
             "name": "Linux",
             "includePath": [
                 "\${workspaceFolder}/**",
-                "$REAL_PYTHON_INCLUDE/",
-                "$REAL_PYTHON_INCLUDE/internal"
+                $(printf '"%s",\n' "${INCLUDE_DIRS[@]}")
             ],
             "defines": [],
             "compilerPath": "$CLANG_BIN/clang++",
@@ -56,8 +61,7 @@ EOF
 cat > "$WORK_DIR/.clangd" <<EOF
 CompileFlags:
   Add: [
-    "-I$REAL_PYTHON_INCLUDE",
-    "-I$REAL_PYTHON_INCLUDE/internal",
+    $(printf '"-I%s",\n' "${INCLUDE_DIRS[@]}")
     "-ferror-limit=0"
   ]
 EOF
