@@ -75,36 +75,41 @@ void installSignalHandler() {
     }
 }
 
-static int runInternal(PyObject *code, uint32_t &outCnt,
-                       bool readResult = false, std::string *outStr = nullptr,
+static int runInternal(PyObject *code, bool readResult = false,
+                       std::string *outStr = nullptr,
                        uint32_t timeoutMs = 1000) {
+    PyObject *dict = PyDict_New();
+    PyObject *name = PyUnicode_FromString("__main__");
+    PyDict_SetItemString(dict, "__name__", name);
+    PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
     if (readResult) {
-        PyObject *dict = PyDict_New();
-        PyObject *name = PyUnicode_FromString("__main__");
-        PyDict_SetItemString(dict, "__name__", name);
-        PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
         PyObject *result = PyEval_EvalCode(code, dict, dict);
+        if (!result) {
+            Py_DECREF(name);
+            if (dict && PyDict_Check(dict)) {
+                PyDict_Clear(dict);
+                Py_DECREF(dict);
+            }
+            if (PyErr_Occurred()) {
+#ifndef DISABLE_DEBUG_OUTPUT
+                PyErr_Print();
+#endif
+                PyErr_Clear();
+                return -1;
+            }
+        } else
+            Py_DECREF(result);
+        result = PyEval_EvalCode(driverPyCodeObj, dict, dict);
         if (!result) {
             if (PyErr_Occurred()) {
 #ifndef DISABLE_DEBUG_OUTPUT
                 PyErr_Print();
 #endif
                 PyErr_Clear();
-                Py_DECREF(dict);
-                Py_DECREF(name);
-                return -1;
+                PANIC("Failed to run driver.py");
             }
-        }
-        Py_DECREF(result);
-        result = PyEval_EvalCode(driverPyCodeObj, dict, dict);
-        if (PyErr_Occurred()) {
-#ifndef DISABLE_DEBUG_OUTPUT
-            PyErr_Print();
-#endif
-            PyErr_Clear();
-            PANIC("Failed to run driver.py");
-        }
-        Py_DECREF(result);
+        } else
+            Py_DECREF(result);
         PyObject *rawJson = PyDict_GetItemString(dict, "result");
         if (!rawJson) {
             PyErr_Print();
@@ -123,14 +128,16 @@ static int runInternal(PyObject *code, uint32_t &outCnt,
 
     } else {
         set_timeout_ms(timeoutMs);
-        PyObject *dict = PyDict_New();
-        PyObject *name = PyUnicode_FromString("__main__");
-        PyDict_SetItemString(dict, "__name__", name);
-        PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
-        PyObject *result = PyEval_EvalCode(code, dict, dict);
-        clear_timeout(); // cancel timeout
+        PyObject *result =
+            PyEval_EvalCode(code, dict, dict); // <<< in this line
+        clear_timeout();                       // cancel timeout
 
         if (!result) {
+            Py_DECREF(name);
+            if (dict && PyDict_Check(dict)) {
+                PyDict_Clear(dict);
+                Py_DECREF(dict);
+            }
             if (PyErr_Occurred()) {
 #ifndef DISABLE_DEBUG_OUTPUT
                 PyErr_Print();
@@ -138,8 +145,8 @@ static int runInternal(PyObject *code, uint32_t &outCnt,
                 PyErr_Clear();
                 return -1;
             }
-        }
-        Py_DECREF(result);
+        } else
+            Py_DECREF(result);
         Py_DECREF(dict);
         Py_DECREF(name);
         return 0;
@@ -269,7 +276,7 @@ int FuzzingAST::runAST(const AST &ast, const BuiltinContext &ctx, bool echo) {
         return -1;
     }
 
-    auto ret = runInternal(code, newEdgeCnt);
+    auto ret = runInternal(code);
     Py_DECREF(code);
     return ret;
 }
@@ -304,8 +311,10 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     }
 
     std::string jsonStr;
-    runInternal(code, newEdgeCnt, true, &jsonStr);
+    int ret = runInternal(code, true, &jsonStr);
     Py_DECREF(code);
+    if (ret != 0)
+        return ret;
     nlohmann::json j = nlohmann::json::parse(jsonStr);
     auto &funcs = j["funcs"];
 
