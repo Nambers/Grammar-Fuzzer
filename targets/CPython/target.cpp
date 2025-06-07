@@ -21,8 +21,15 @@
 
 using namespace FuzzingAST;
 
+struct PyObjectDeleter {
+    void operator()(PyObject *obj) const { Py_XDECREF(obj); }
+};
+
+using PyObjectPtr = std::unique_ptr<PyObject, PyObjectDeleter>;
+
 extern uint32_t newEdgeCnt;
 static PyObject *driverPyCodeObj;
+static sigjmp_buf timeoutJmp;
 
 extern "C" void __sanitizer_cov_trace_pc_guard_init(uint32_t *start,
                                                     uint32_t *stop) {
@@ -44,7 +51,7 @@ extern "C" void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
 static void alarmHandler(int signum) {
     if (signum == SIGALRM) {
         ERROR("Execution timed out.");
-        raise(SIGINT);
+        siglongjmp(timeoutJmp, 1);
     }
 }
 
@@ -78,78 +85,69 @@ void installSignalHandler() {
 static int runInternal(PyObject *code, bool readResult = false,
                        std::string *outStr = nullptr,
                        uint32_t timeoutMs = 1000) {
-    PyObject *dict = PyDict_New();
-    PyObject *name = PyUnicode_FromString("__main__");
-    PyDict_SetItemString(dict, "__name__", name);
-    PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
-    if (readResult) {
-        PyObject *result = PyEval_EvalCode(code, dict, dict);
-        if (!result) {
-            Py_DECREF(name);
-            if (dict && PyDict_Check(dict)) {
-                PyDict_Clear(dict);
-                Py_DECREF(dict);
-            }
-            if (PyErr_Occurred()) {
+    if (sigsetjmp(timeoutJmp, 1) == 0) {
+        PyObjectPtr dict(PyDict_New());
+        PyObjectPtr name(PyUnicode_FromString("__main__"));
+        PyDict_SetItemString(dict.get(), "__name__", name.get());
+        PyDict_SetItemString(dict.get(), "__builtins__", PyEval_GetBuiltins());
+        if (readResult) {
+            PyObjectPtr result(PyEval_EvalCode(code, dict.get(), dict.get()));
+            if (!result) {
+                if (PyErr_Occurred()) {
 #ifndef DISABLE_DEBUG_OUTPUT
-                PyErr_Print();
+                    PyErr_Print();
 #endif
-                PyErr_Clear();
-                return -1;
+                    PyErr_Clear();
+                    return -1;
+                }
             }
-        } else
-            Py_DECREF(result);
-        result = PyEval_EvalCode(driverPyCodeObj, dict, dict);
-        if (!result) {
-            if (PyErr_Occurred()) {
+            result.reset(
+                PyEval_EvalCode(driverPyCodeObj, dict.get(), dict.get()));
+            if (!result) {
+                if (PyErr_Occurred()) {
 #ifndef DISABLE_DEBUG_OUTPUT
-                PyErr_Print();
+                    PyErr_Print();
 #endif
-                PyErr_Clear();
-                PANIC("Failed to run driver.py");
+                    PyErr_Clear();
+                    PANIC("Failed to run driver.py");
+                }
             }
-        } else
-            Py_DECREF(result);
-        PyObject *rawJson = PyDict_GetItemString(dict, "result");
-        if (!rawJson) {
-            PyErr_Print();
-            PANIC("Failed to get 'result' from driver.py");
-        }
-        if (!PyUnicode_Check(rawJson)) {
-            PyErr_Print();
-            PANIC("'result' from driver.py is not a string");
-        }
-        std::string re(PyUnicode_AsUTF8(rawJson));
-        Py_DECREF(rawJson);
-        Py_DECREF(name);
-        Py_DECREF(dict);
-        outStr->assign(re);
-        return 0;
+            // a borrowed ptr, no need to DECREF
+            PyObject *rawJson = PyDict_GetItemString(dict.get(), "result");
+            if (!rawJson) {
+                PyErr_Print();
+                PANIC("Failed to get 'result' from driver.py");
+            }
+            if (!PyUnicode_Check(rawJson)) {
+                PyErr_Print();
+                PANIC("'result' from driver.py is not a string");
+            }
+            outStr->assign(PyUnicode_AsUTF8(rawJson));
+            return 0;
 
+        } else {
+            set_timeout_ms(timeoutMs);
+            PyObjectPtr result(PyEval_EvalCode(code, dict.get(), dict.get()));
+            clear_timeout(); // cancel timeout
+
+            if (!result) {
+                if (PyErr_Occurred()) {
+#ifndef DISABLE_DEBUG_OUTPUT
+                    PyErr_Print();
+#endif
+                    PyErr_Clear();
+                    return -1;
+                }
+            }
+            return 0;
+        }
     } else {
-        set_timeout_ms(timeoutMs);
-        PyObject *result =
-            PyEval_EvalCode(code, dict, dict); // <<< in this line
-        clear_timeout();                       // cancel timeout
+        clear_timeout();
+        // PyErr_SetString(PyExc_RuntimeError, "Execution timed out");
+        finalize();
 
-        if (!result) {
-            Py_DECREF(name);
-            if (dict && PyDict_Check(dict)) {
-                PyDict_Clear(dict);
-                Py_DECREF(dict);
-            }
-            if (PyErr_Occurred()) {
-#ifndef DISABLE_DEBUG_OUTPUT
-                PyErr_Print();
-#endif
-                PyErr_Clear();
-                return -1;
-            }
-        } else
-            Py_DECREF(result);
-        Py_DECREF(dict);
-        Py_DECREF(name);
-        return 0;
+        initialize(nullptr, nullptr);
+        return -2;
     }
 }
 
@@ -166,7 +164,8 @@ int FuzzingAST::initialize(int *argc, char ***argv) {
 
     installSignalHandler();
 
-    Py_Initialize();
+    // skip signal handling in Python
+    Py_InitializeEx(0);
     driverPyCodeObj =
         Py_CompileString(driverPyConent.c_str(), "<driver.py>", Py_file_input);
     if (PyErr_Occurred()) {
@@ -180,24 +179,19 @@ int FuzzingAST::initialize(int *argc, char ***argv) {
         std::abort();
     }
     int py_fd = dup(devnull);
-    PyObject *py_err_file = PyFile_FromFd(py_fd, "py_stderr", "w", -1, nullptr,
-                                          nullptr, nullptr, 1);
+    PyObjectPtr py_err_file(PyFile_FromFd(py_fd, "py_stderr", "w", -1, nullptr,
+                                          nullptr, nullptr, 1));
     if (!py_err_file) {
         PyErr_Print();
         std::abort();
     }
-    PySys_SetObject("stderr", py_err_file);
-    Py_DECREF(py_err_file);
+    PySys_SetObject("stderr", py_err_file.get());
 
     close(devnull);
     return 0;
 }
 
-int FuzzingAST::finalize() {
-    Py_DECREF(driverPyCodeObj);
-    Py_Finalize();
-    return 0;
-}
+int FuzzingAST::finalize() { return Py_FinalizeEx(); }
 
 void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
     auto &funcSignatures = ctx.builtinsFuncs;
