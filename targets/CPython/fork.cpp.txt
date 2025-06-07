@@ -1,0 +1,160 @@
+// #define PCHECK(p_op, s)                                                        \
+//     {                                                                          \
+//         ssize_t r = (p_op);                                                    \
+//         if (r < s) {                                                           \
+//             perror(#p_op);                                                     \
+//             PANIC("Failed to " #p_op " actual={}", r);                         \
+//         }                                                                      \
+//     }
+// uint32_t newEdgeCntFork = 0;
+// // Shared coverage bitmap
+// static std::atomic<uint8_t> *cov_bitmap = nullptr;
+// static constexpr size_t MAP_SIZE = 64 * 1024;
+
+// extern "C" void __sanitizer_cov_trace_pc_guard_init(uint32_t *start,
+//                                                     uint32_t *stop) {
+//     if (start == stop || *start)
+//         return;
+//     static uint32_t N = 0;
+//     for (uint32_t *x = start; x < stop; ++x) {
+//         *x = ++N;
+//     }
+// }
+
+// extern "C" void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
+//     if (!*guard)
+//         return;
+//     uint32_t idx = *guard - 1;
+//     idx = (idx * 0x9e3779b1u) & (MAP_SIZE - 1);
+//     if (cov_bitmap &&
+//         cov_bitmap[idx].fetch_add(1, std::memory_order_relaxed) == 0) {
+//         newEdgeCntFork++;
+//     }
+
+//     *guard = 0;
+// }
+
+// static int runInternal(PyObject *code, uint32_t &outCnt, bool readResult =
+// false,
+//                    std::string *outStr = nullptr, uint32_t timeoutMs = 500) {
+//     int fds[2];
+//     if (pipe(fds) < 0)
+//         return -1;
+//     PyOS_BeforeFork();
+//     pid_t pid = fork();
+//     if (pid < 0)
+//         return -1;
+//     if (pid == 0) {
+//         // child
+//         close(fds[0]);
+//         newEdgeCntFork = 0;
+//         PyOS_AfterFork_Child();
+//         PyObject *dict = PyDict_New();
+//         PyObject *name = PyUnicode_FromString("__main__");
+//         PyDict_SetItemString(dict, "__name__", name);
+//         PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
+//         PyObject *result = PyEval_EvalCode(code, dict, dict);
+//         if (PyErr_Occurred()) {
+// #ifndef DISABLE_DEBUG_OUTPUT
+//             PyErr_Print();
+// #endif
+//             PyErr_Clear();
+//             ERROR("Failed to run decl code block");
+//             Py_DECREF(name);
+//             Py_DECREF(dict);
+//             _Exit(1);
+//         }
+//         if (readResult) {
+//             PyObject *result = PyEval_EvalCode(driverPyCodeObj, dict, dict);
+//             if (PyErr_Occurred()) {
+//                 PyErr_Print();
+//                 PANIC("Failed to run driver.py");
+//             }
+//             PyObject *rawJson = PyDict_GetItemString(dict, "result");
+//             if (!rawJson) {
+//                 PyErr_Print();
+//                 PANIC("Failed to get 'result' from driver.py");
+//             }
+//             if (!PyUnicode_Check(rawJson)) {
+//                 PyErr_Print();
+//                 PANIC("'result' from driver.py is not a string");
+//             }
+//             std::string re(PyUnicode_AsUTF8(rawJson));
+//             Py_DECREF(result);
+//             // DON'T DECREF
+//             // Py_DECREF(rawJson);
+//             Py_DECREF(name);
+//             Py_DECREF(dict);
+//             PCHECK(write(fds[1], &newEdgeCntFork, sizeof(newEdgeCntFork)),
+//                    sizeof(newEdgeCntFork));
+//             int len = re.size();
+//             PCHECK(write(fds[1], &len, sizeof(len)), sizeof(len));
+//             PCHECK(write(fds[1], re.data(), len), len);
+//         } else {
+//             Py_DECREF(result);
+//             Py_DECREF(dict);
+//             Py_DECREF(name);
+//             PCHECK(write(fds[1], &newEdgeCntFork, sizeof(newEdgeCntFork)),
+//                    sizeof(newEdgeCntFork));
+//         }
+//         close(fds[1]);
+//         _Exit(0);
+//     }
+//     close(fds[1]);
+//     PyOS_AfterFork_Parent();
+//     using clk = std::chrono::steady_clock;
+//     auto start = clk::now();
+//     int status;
+//     bool timedOut = false;
+//     while (true) {
+//         pid_t w = waitpid(pid, &status, WNOHANG);
+//         if (w == pid)
+//             break;
+//         if (std::chrono::duration_cast<std::chrono::milliseconds>(clk::now()
+//         -
+//                                                                   start)
+//                 .count() > timeoutMs) {
+//             kill(pid, SIGKILL);
+//             waitpid(pid, &status, 0);
+//             timedOut = true;
+//             break;
+//         }
+//         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+//     }
+//     if (timedOut) {
+//         close(fds[0]);
+//         return -2;
+//     }
+//     if (WEXITSTATUS(status) == 1)
+//         return -1;
+//     uint32_t cntTmp = 0;
+//     PCHECK(read(fds[0], &cntTmp, sizeof(cntTmp)), sizeof(cntTmp));
+//     outCnt += cntTmp;
+//     if (readResult) {
+//         int tmp;
+//         PCHECK(read(fds[0], &tmp, sizeof(tmp)), sizeof(tmp));
+//         outStr->resize(tmp);
+//         PCHECK(read(fds[0], outStr->data(), tmp), tmp);
+//     }
+//     close(fds[0]);
+//     return 0;
+// }
+
+// static void setup_cov_shm() {
+//     int shmid = shmget(IPC_PRIVATE, MAP_SIZE, IPC_CREAT | 0600);
+//     if (shmid < 0) {
+//         perror("shmget");
+//         std::exit(1);
+//     }
+//     void *ptr = shmat(shmid, nullptr, 0);
+//     if (ptr == (void *)-1) {
+//         perror("shmat");
+//         std::exit(1);
+//     }
+//     shmctl(shmid, IPC_RMID, nullptr);
+//     cov_bitmap = reinterpret_cast<std::atomic<uint8_t> *>(ptr);
+//     // initialize bitmap to zero
+//     for (size_t i = 0; i < MAP_SIZE; ++i) {
+//         cov_bitmap[i].store(0, std::memory_order_relaxed);
+//     }
+// }

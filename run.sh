@@ -2,8 +2,7 @@
 set -euo pipefail
 
 BUILD_PATH=$(readlink -f build)
-COV_PATH=$(readlink -f cov)
-BUILD_COV_PATH=$COV_PATH/build
+BUILD_COV_PATH=$(readlink -f build_cov)
 
 mkdir -p corpus/tmp corpus/queue corpus/done corpus/saved
 
@@ -32,7 +31,7 @@ trap cleanup SIGINT
 
 export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0;
 
-LLVM_PROFILE_FILE="default_%p.profraw" $BUILD_COV_PATH/CPythonCov &
+LLVM_PROFILE_FILE="default_%p.profraw" $BUILD_COV_PATH/targets/CPython/CPythonCov &
 COV_PID=$!
 
 # -load-saved to load previously saved corpus

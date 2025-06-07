@@ -45,7 +45,7 @@ while [ "$1" != "" ]; do
 done
 
 cmake -B $BUILD_PATH $CMAKE_ARG .
-cmake --build $BUILD_PATH -- -j $USING_CORE
+cmake --build $BUILD_PATH --target pyFuzzer CPythonTest -- -j $USING_CORE
 
-python3 src/driver/python/builtins.py src/driver/python/builtins.json
+python3 targets/CPython/builtins.py targets/CPython/builtins.json
 

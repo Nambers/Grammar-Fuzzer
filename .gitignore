@@ -2,15 +2,11 @@
 !.gitignore
 !src
 !src/**
-!test
-!test/**
+!targets
+!targets/**
 !scripts
 !scripts/**
 !*.sh
 !CMakeLists.txt
 !readme.md
-!cov
-!cov/**
 !cov_map.py
-!tools
-!tools/**

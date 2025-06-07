@@ -1,3 +1,8 @@
+#include "ast.hpp"
+#include "dumper.hpp"
+#include "log.hpp"
+#include "serialization.hpp"
+#include <Python.h>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -7,9 +12,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-#include "driver.hpp"
-#include "serialization.hpp"
 
 using namespace FuzzingAST;
 
@@ -31,6 +33,19 @@ static void handleSigint(int) {
     shouldExit = true;
 }
 
+static void runASTStr(const std::string &re) {
+    PyObject *code = Py_CompileString(re.c_str(), "<ast>", Py_file_input);
+    PyObject *dict = PyDict_New();
+    PyObject *name = PyUnicode_FromString("__main__");
+    PyDict_SetItemString(dict, "__name__", name);
+    PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
+    PyObject *result = PyEval_EvalCode(code, dict, dict);
+    Py_DECREF(result);
+    Py_DECREF(code);
+    Py_DECREF(dict);
+    Py_DECREF(name);
+}
+
 static void collect() {
     std::vector<fs::directory_entry> entries;
     for (const auto &entry : fs::directory_iterator(queueDir)) {
@@ -49,11 +64,13 @@ static void collect() {
 
         try {
             std::string content = readFile(filePath);
-            nlohmann::json j = nlohmann::json::parse(content);
-            AST ast = j.get<AST>();
+            nlohmann::json jsonData = nlohmann::json::parse(content);
+            AST ast = jsonData.get<AST>();
+            std::ostringstream astStream;
+            scopeToPython(astStream, 0, ast, ctx, 0);
+            // std::cout << "[cov] Running on: " << filename << "\n";
 
-            std::cout << "[cov] Running on: " << filename << "\n";
-            runAST(ast, ctx);
+            runASTStr(astStream.str());
 
             // Move to done/
             fs::rename(filePath, doneDir / filename);
@@ -65,8 +82,23 @@ static void collect() {
     }
 }
 
+void loadBuiltinsFuncs(BuiltinContext &ctx) {
+    auto &funcSignatures = ctx.builtinsFuncs;
+    auto &types = ctx.types;
+    FILE *file = fopen("./targets/CPython/builtins.json", "r");
+    if (!file) {
+        PANIC("Failed to open builtins.json, run build.sh to generate it.");
+    }
+    nlohmann::json j = nlohmann::json::parse(file);
+    auto tmp =
+        j["funcs"].get<std::unordered_map<std::string, FunctionSignature>>();
+    funcSignatures.swap(tmp);
+    auto tmp2 = j["types"].get<std::vector<std::string>>();
+    types.swap(tmp2);
+}
+
 int main() {
-    initialize(nullptr, nullptr);
+    Py_Initialize();
     signal(SIGINT, handleSigint);
 
     if (!fs::exists(doneDir)) {
@@ -82,6 +114,6 @@ int main() {
         collect();
     }
     collect(); // Final collection to ensure all files are processed
-
+    Py_Finalize();
     return 0;
 }

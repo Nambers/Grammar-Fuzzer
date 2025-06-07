@@ -2,9 +2,10 @@
 
 set -e
 
-COV_PATH=$(readlink -f cov)
-BUILD_PATH=$COV_PATH/build
+BUILD_PATH=$(readlink -f build_cov)
 USING_CORE=$(( $(nproc) - 1 ))
 
-cmake -B $BUILD_PATH $COV_PATH
-cmake --build $BUILD_PATH -- -j $USING_CORE
+mkdir -p $BUILD_PATH
+
+cmake -B $BUILD_PATH ./
+cmake --build $BUILD_PATH --target CPythonCov -- -j $USING_CORE

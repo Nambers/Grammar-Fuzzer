@@ -1,7 +1,6 @@
 #include "UI.hpp"
 #include "FuzzSchedulerState.hpp"
 #include "ast.hpp"
-#include <Python.h>
 #include <atomic>
 #include <chrono>
 #include <fcntl.h>
@@ -121,30 +120,15 @@ static RingBuffer stderr_buffer(LOG_LINES);
 static LineBuf stdout_linebuf(stdout_buffer);
 static LineBuf stderr_linebuf(stderr_buffer);
 
-static auto old_cout = std::cout.rdbuf();
-static auto old_cerr = std::cerr.rdbuf();
+static std::streambuf *old_cout = nullptr;
+static std::streambuf *old_cerr = nullptr;
 static std::chrono::steady_clock::time_point start_time;
 
 void FuzzingAST::TUI::initTUI() {
+    old_cout = std::cout.rdbuf();
+    old_cerr = std::cerr.rdbuf();
     std::cout.rdbuf(&stdout_linebuf);
     std::cerr.rdbuf(&stderr_linebuf);
-
-    int devnull = open("/dev/null", O_WRONLY);
-    if (devnull == -1) {
-        perror("open(/dev/null)");
-        std::abort();
-    }
-    int py_fd = dup(devnull);
-    PyObject *py_err_file = PyFile_FromFd(py_fd, "py_stderr", "w", -1, nullptr,
-                                          nullptr, nullptr, 1);
-    if (!py_err_file) {
-        PyErr_Print();
-        std::abort();
-    }
-    PySys_SetObject("stderr", py_err_file);
-    Py_DECREF(py_err_file);
-
-    close(devnull);
     // TODO clear screen
     // std::cout << "\x1b[3J\x1b[H\x1b[2J" << std::flush;
     // Screen::Create(Dimension::Full(), Dimension::Full()).Clear();

@@ -10,6 +10,9 @@ BLACKLIST = {
     "input",
     "open",
     "help",
+    "pow",
+    "__pow__",
+    "__rpow__"
 }
 
 
@@ -71,6 +74,8 @@ def collect_class_methods(cls, qualified_name=None):
 
     clsname = qualified_name or cls.__name__
     for attr_name, attr in cls.__dict__.items():
+        if attr_name in BLACKLIST:
+            continue
         method_type = "instance"
         if isinstance(attr, staticmethod):
             real_func = attr.__func__

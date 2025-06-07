@@ -37,8 +37,11 @@ endif()
 
 file(GLOB_RECURSE SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cpp)
 
+add_subdirectory(${CMAKE_SOURCE_DIR}/targets/CPython)
+
 add_executable(pyFuzzer
     ${SOURCE_FILES}
+    $<TARGET_OBJECTS:CPythonTarget>
 )
 target_include_directories(pyFuzzer PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -53,7 +56,6 @@ target_link_libraries(pyFuzzer PRIVATE
     ftxui::component
 )
 
+target_link_directories(pyFuzzer PRIVATE ${Python3_LIBRARY_DIRS})
 target_compile_options(pyFuzzer PRIVATE -g -fno-omit-frame-pointer -O2)
-target_link_options(pyFuzzer PRIVATE -fsanitize=address,undefined,fuzzer-no-link -fsanitize-coverage=edge,trace-pc-guard)
-
-add_subdirectory(test)
+target_link_options(pyFuzzer PRIVATE -fsanitize=address,undefined -fsanitize=address,undefined -fsanitize-coverage=edge,trace-pc-guard)

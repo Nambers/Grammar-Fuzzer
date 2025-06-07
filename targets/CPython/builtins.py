@@ -2,7 +2,6 @@ import json
 import sys
 from driver import collect_all
 
-
 def convert_types_to_index(results: dict):
     type_list = results["types"]
     for sig in results["funcs"].values():
