@@ -1,6 +1,8 @@
 import inspect
 import json
 import builtins
+from annotationlib import get_annotations, Format
+from typing import Any
 
 BLACKLIST = {
     "eval",
@@ -12,59 +14,53 @@ BLACKLIST = {
     "help",
     "pow",
     "__pow__",
-    "__rpow__"
+    "__rpow__",
 }
 
 
-def normalize_type(ann):
-    if ann is inspect.Signature.empty:
-        return "object"
-    elif isinstance(ann, type):
-        return ann.__name__
-    else:
-        return str(ann)
+def resolve_annotations(obj):
+    return get_annotations(obj, format=Format.VALUE)
 
 
 def extract_signature(obj, clsname=None, method_type="instance"):
-    param_types = []
-    return_type = "object"
-    self_type = (
-        None
-        if method_type == "static"
-        else clsname if clsname else None
-    )
-
     try:
         sig = inspect.signature(obj)
     except (TypeError, ValueError):
-        # If the object has no signature (e.g., built-in descriptors)
         return {
             "paramTypes": ["object", "object"],
-            "selfType": self_type,
+            "selfType": clsname if method_type != "static" else None,
             "returnType": "object",
         }
 
-    for i, (pname, param) in enumerate(sig.parameters.items()):
-        try:
-            ann = normalize_type(param.annotation)
-        except Exception:
-            ann = "object"
-        ann = "object" if ann in ("Any", "object") else ann
-        if i == 0 and pname in ("self", "cls") and method_type != "static":
-            continue
-        param_types.append(ann)
-
     try:
-        return_ann = normalize_type(sig.return_annotation)
+        ann = resolve_annotations(obj)
     except Exception:
-        return_ann = "object"
-    return_type = "object" if return_ann in ("Any", "object") else return_ann
+        ann = {}
+
+    param_types = []
+    for i, (name, param) in enumerate(sig.parameters.items()):
+        if i == 0 and name in ("self", "cls") and method_type != "static":
+            continue
+        param_types.append(type_name(ann.get(name, Any)))
+
+    return_type = type_name(ann.get("return", Any))
+    self_type = clsname if method_type != "static" else None
 
     return {
         "paramTypes": param_types,
         "selfType": self_type,
         "returnType": return_type,
     }
+
+
+def type_name(ann):
+    if ann in (inspect.Signature.empty, None, Any):
+        return "object"
+    if isinstance(ann, type):
+        return ann.__name__
+    if hasattr(ann, "__forward_arg__"):
+        return ann.__forward_arg__
+    return str(ann)
 
 
 def collect_class_methods(cls, qualified_name=None):
@@ -108,9 +104,7 @@ def collect_all(enable_builtins=False, results={"funcs": {}, "types": []}):
             if inspect.isbuiltin(obj) and name not in BLACKLIST:
                 results["funcs"][name] = extract_signature(obj)
             if inspect.isclass(obj):
-                results["funcs"].update(
-                    collect_class_methods(obj, name)
-                )
+                results["funcs"].update(collect_class_methods(obj, name))
 
     for name, obj in globals().items():
         if inspect.isclass(obj):
