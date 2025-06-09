@@ -1,12 +1,12 @@
 { pkgs ? import <nixpkgs> { } }:
 
 let
-  version = "3.13.0";
+  version = "3.14.0b2";
   pythonSrc = pkgs.fetchFromGitHub {
     owner = "python";
     repo = "cpython";
     rev = "v${version}";
-    sha256 = "sha256-GERYjuSqBDj/tYYv5sJTgNeTX2p/LjOulH4PDsWx7Hg=";
+    sha256 = "sha256-FpOanW5G08aGM9j2+tTXuGk0uTXV+KGl/eOViwTFgrQ=";
   };
   fuzzCFlags = pkgs.lib.concatStringsSep " " [
     "-g"
@@ -74,7 +74,7 @@ in pkgs.stdenv.mkDerivation {
   '';
 
   patches = [
-    "${pkgs.path}/pkgs/development/interpreters/python/cpython/3.13/no-ldconfig.patch"
+    "${pkgs.path}/pkgs/development/interpreters/python/cpython/3.14/no-ldconfig.patch"
   ];
 
   buildPhase = ''

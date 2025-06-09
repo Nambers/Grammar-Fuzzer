@@ -23,7 +23,6 @@ WORK_DIR=$(readlink -f .)
 SCRIPT_DIR=$(readlink -f ./scripts)
 cd $WORK_DIR
 
-CPYTHON_VERSION=3.13.0b3
 BUILD_PATH=$(readlink -f build)
 USING_CORE=$(( $(nproc) - 1 ))
 CMAKE_ARG=""

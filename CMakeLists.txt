@@ -7,8 +7,6 @@ set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(nlohmann_json 3.12.0 REQUIRED)
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
 
 # --- Fetch FTXUI --------------------------------------------------------------
 include(FetchContent)
@@ -45,17 +43,12 @@ add_executable(pyFuzzer
 )
 target_include_directories(pyFuzzer PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${Python3_INCLUDE_DIRS}
     ${ftxui_SOURCE_DIR}/include
 )
 target_link_libraries(pyFuzzer PRIVATE
-    ${Python3_LIBRARIES}
     nlohmann_json::nlohmann_json
     ftxui::screen
     ftxui::dom
     ftxui::component
+    CPythonTargetOption
 )
-
-target_link_directories(pyFuzzer PRIVATE ${Python3_LIBRARY_DIRS})
-target_compile_options(pyFuzzer PRIVATE -g -fno-omit-frame-pointer -O2)
-target_link_options(pyFuzzer PRIVATE -fsanitize=address,undefined -fsanitize=address,undefined -fsanitize-coverage=edge,trace-pc-guard)

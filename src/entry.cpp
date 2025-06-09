@@ -4,7 +4,6 @@
 #include "driver.hpp"
 #include "fuzzer.hpp"
 #include "log.hpp"
-#include <Python.h>
 #include <atomic>
 #include <cstdlib>
 #include <fstream>
