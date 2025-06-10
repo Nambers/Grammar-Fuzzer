@@ -16,6 +16,7 @@ const static std::string stage_names[] = {
     "Execution Generation", "Declaration Mutation", "Fallback Old Corpus"};
 
 extern uint32_t newEdgeCnt;
+extern uint32_t errCnt;
 
 class RingBuffer {
   public:
@@ -169,7 +170,8 @@ void FuzzingAST::TUI::writeTUI(const FuzzingAST::FuzzSchedulerState &state,
                   separator(), text("NewEdges: ") | dim,
                   text(std::to_string(newEdgeCnt)), separator(),
                   text("NoEdge: ") | dim,
-                  text(std::to_string(state.noEdgeCount))}),
+                  text(std::to_string(state.noEdgeCount)), separator(),
+                  text("ErrCnt: ") | dim, text(std::to_string(errCnt))}),
             hbox({text("ExecStalls: ") | dim,
                   text(std::to_string(state.execStallCount)), separator(),
                   text("ASTSize: ") | dim, text(std::to_string(currentASTSize)),

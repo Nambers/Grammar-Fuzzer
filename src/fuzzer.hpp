@@ -5,8 +5,8 @@
 #include <random>
 
 namespace FuzzingAST {
-AST FuzzerInitialize(int *argc, char ***argv);
-void fuzzerDriver(AST initAST);
+void FuzzerInitialize(int *argc, char ***argv);
+void fuzzerDriver();
 } // namespace FuzzingAST
 
 #endif // FUZZER_HPP

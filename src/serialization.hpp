@@ -69,11 +69,12 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ASTNodeKind,
                               {ASTNodeKind::Call, "Call"},
                               {ASTNodeKind::Return, "Return"},
                               {ASTNodeKind::BinaryOp, "BinaryOp"},
-                              {ASTNodeKind::UnaryOp, "UnaryOp"}});
+                              {ASTNodeKind::UnaryOp, "UnaryOp"},
+                              {ASTNodeKind::Custom, "Custom"}});
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTNode, kind, fields, scope, type);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTScope, declarations, expressions,
-                                   variables, types, funcSignatures, parent,
-                                   retType);
+                                   variables, types, inheritedTypes,
+                                   funcSignatures, parent, retType);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(FunctionSignature, paramTypes, selfType,
                                    returnType);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AST, nameCnt, scopes, declarations,

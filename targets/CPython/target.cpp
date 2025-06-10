@@ -28,6 +28,7 @@ struct PyObjectDeleter {
 using PyObjectPtr = std::unique_ptr<PyObject, PyObjectDeleter>;
 
 extern uint32_t newEdgeCnt;
+extern uint32_t errCnt;
 static PyObject *driverPyCodeObj;
 static sigjmp_buf timeoutJmp;
 
@@ -136,6 +137,7 @@ static int runInternal(PyObject *code, bool readResult = false,
                     PyErr_Print();
 #endif
                     PyErr_Clear();
+                    ++errCnt;
                     return -1;
                 }
             }
@@ -194,8 +196,6 @@ int FuzzingAST::initialize(int *argc, char ***argv) {
 int FuzzingAST::finalize() { return Py_FinalizeEx(); }
 
 void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
-    auto &funcSignatures = ctx.builtinsFuncs;
-    auto &types = ctx.types;
     FILE *file = fopen("./targets/CPython/builtins.json", "r");
     if (!file) {
         PANIC("Failed to open builtins.json, run build.sh to generate it.");
@@ -203,9 +203,11 @@ void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
     nlohmann::json j = nlohmann::json::parse(file);
     auto tmp =
         j["funcs"].get<std::unordered_map<std::string, FunctionSignature>>();
-    funcSignatures.swap(tmp);
+    ctx.builtinsFuncs.swap(tmp);
     auto tmp2 = j["types"].get<std::vector<std::string>>();
-    types.swap(tmp2);
+    ctx.types.swap(tmp2);
+    auto tmp3 = j["ops"].get<std::vector<std::vector<std::vector<TypeID>>>>();
+    ctx.ops.swap(tmp3);
 }
 
 void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,

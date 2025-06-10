@@ -20,6 +20,7 @@ let
   fuzzLDFlags = pkgs.lib.concatStringsSep " " [
     "-fsanitize=fuzzer-no-link,address,undefined"
     "-fsanitize-coverage=trace-pc-guard"
+    "-fuse-ld=mold"
   ];
 in pkgs.stdenv.mkDerivation {
   pname = "cpython-inst-pkg";
@@ -43,6 +44,7 @@ in pkgs.stdenv.mkDerivation {
     pkgs.zlib
     pkgs.xz
     pkgs.tzdata
+    pkgs.mold-wrapped
   ];
 
   configureFlags = [

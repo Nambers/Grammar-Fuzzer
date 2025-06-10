@@ -93,11 +93,6 @@ def collect_class_methods(cls, qualified_name=None):
 
 
 def collect_all(enable_builtins=False, results={"funcs": {}, "types": []}):
-    if not enable_builtins:
-        for name, obj in globals().items():
-            if inspect.isclass(obj):
-                results["types"].append(name)
-
     if enable_builtins:
         for name in dir(builtins):
             obj = getattr(builtins, name)
@@ -105,10 +100,11 @@ def collect_all(enable_builtins=False, results={"funcs": {}, "types": []}):
                 results["funcs"][name] = extract_signature(obj)
             if inspect.isclass(obj):
                 results["funcs"].update(collect_class_methods(obj, name))
-
-    for name, obj in globals().items():
-        if inspect.isclass(obj):
-            results["funcs"].update(collect_class_methods(obj, name))
+    else:
+        for name, obj in globals().items():
+            if inspect.isclass(obj):
+                results["types"].append(name)
+                results["funcs"].update(collect_class_methods(obj, name))
 
     return results
 

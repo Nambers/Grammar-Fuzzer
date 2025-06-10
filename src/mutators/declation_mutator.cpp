@@ -137,9 +137,14 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
             NodeID clsID = classes[rng() % classes.size()];
             ASTNode &clsNode = ast->ast.declarations[clsID];
 
-            const std::string &className =
-                std::get<std::string>(clsNode.fields[0].val);
-            const std::string prefix = className + ".";
+            // get inheritance class name
+            if (std::holds_alternative<int64_t>(clsNode.fields[1].val)) {
+                // class don't have inheritance
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const std::string prefix =
+                std::get<std::string>(clsNode.fields[1].val) + ".";
 
             std::vector<const std::pair<const std::string, FunctionSignature> *>
                 cands;
@@ -158,7 +163,6 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
             const std::string fnName =
                 fullName.substr(prefix.size()); // remove "<cls>."
 
-            NodeID funID = ast->ast.declarations.size();
             ASTNode fun;
             fun.kind = ASTNodeKind::Function;
             fun.scope = ast->ast.scopes.size();
@@ -174,11 +178,13 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
                 fun.fields.push_back({pt});
             }
 
+            clsNode.fields.emplace_back(
+                static_cast<NodeID>(ast->ast.declarations.size()));
+
             // will be added in reflectObject
             // scope.funcSignatures[fnName] = sig;
             ast->ast.declarations.push_back(std::move(fun));
 
-            clsNode.fields.push_back({funID}); // push back as member function
             break;
         }
 
@@ -191,20 +197,25 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
             bumpIdentifier(ast->ast.nameCnt);
 
             std::string inheritName;
+            TypeID inheritType = -1;
             // pick a random type to inherit from
             if (typesCnt > 0) {
                 TypeID tid = pickType(rng);
                 if (tid < scope.types.size()) {
+                    inheritType = tid + SCOPE_MAX_TYPE * (sid + 1);
                     inheritName = scope.types[tid];
                 } else {
                     tid -= scope.types.size();
                     if (scope.parent != -1 && tid < parentScope.types.size()) {
+                        inheritType = (scope.parent + 1) * SCOPE_MAX_TYPE + tid;
                         inheritName = parentScope.types[tid];
                     } else {
                         tid -=
                             (scope.parent != -1 ? parentScope.types.size() : 0);
-                        if (tid < ctx.types.size())
+                        if (tid < ctx.types.size()) {
+                            inheritType = tid;
                             inheritName = ctx.types[tid];
+                        }
                     }
                 }
                 if (!inheritName.empty())
@@ -212,6 +223,7 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
             }
 
             scope.types.push_back(std::get<std::string>(cls.fields[0].val));
+            scope.inheritedTypes.push_back(inheritType);
             // sentinel
             cls.fields.push_back({-1});
 
@@ -257,13 +269,13 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
             bumpIdentifier(ast->ast.nameCnt);
             TypeID tid = pickType(rng);
             if (tid < scope.types.size()) {
-                var.type = tid + SCOPE_MAX_TYPE * (sid + 1);
+                var.type = scope.inheritedTypes[tid];
                 var.fields[1].val = scope.types[tid] + "()";
             } else {
                 tid -= scope.types.size();
                 if (scope.parent != -1) {
                     if (tid < parentScope.types.size()) {
-                        var.type = (scope.parent + 1) * SCOPE_MAX_TYPE + tid;
+                        var.type = parentScope.inheritedTypes[tid];
                         var.fields[1].val = parentScope.types[tid] + "()";
                     } else {
                         tid -= parentScope.types.size();

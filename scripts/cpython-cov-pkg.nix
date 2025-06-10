@@ -19,6 +19,7 @@ let
   fuzzLDFlags = pkgs.lib.concatStringsSep " " [
     "-fprofile-instr-generate"
     "-fcoverage-mapping"
+    "-fuse-ld=mold"
   ];
 in pkgs.stdenv.mkDerivation {
   pname = "cpython-cov-pkg";
@@ -42,6 +43,7 @@ in pkgs.stdenv.mkDerivation {
     pkgs.zlib
     pkgs.xz
     pkgs.tzdata
+    pkgs.mold-wrapped
   ];
 
   configureFlags = [

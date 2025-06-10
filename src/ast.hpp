@@ -2,6 +2,7 @@
 #define AST_HPP
 
 #include <array>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -30,6 +31,8 @@ enum class ASTNodeKind {
     Return,       // return x
     BinaryOp,     // x + y
     UnaryOp,      // -x
+    // ---
+    Custom,
 };
 
 constexpr ASTNodeKind DECL_NODE_END = ASTNodeKind::Import;
@@ -43,14 +46,50 @@ class FunctionSignature {
     TypeID returnType = -1;
 };
 
+class ASTData; // forward declaration
+
+class VariablePicker {
+  public:
+    // Build index for all scopes, merging parent scope and initializing
+    // distributions
+    void update(const std::shared_ptr<ASTData> &ast);
+
+    // Pick a random type available in given scope (fallback to 0)
+    TypeID pickRandomType(ScopeID scopeID);
+
+    // Pick a random variable name by type, with fallback to object type (0)
+    std::string pickRandomVar(ScopeID scopeID, TypeID type);
+
+    // Pick a random variable of any type in given scope (including inherited
+    // and object)
+    std::string pickRandomVar(ScopeID scopeID);
+    std::string pickRandomVar(ScopeID scopeID,
+                              const std::vector<TypeID> &types);
+
+  private:
+    std::vector<std::unordered_map<TypeID, std::vector<std::string>>>
+        index_; // one map per scope, includes inherited variables
+
+    // For uniform distribution over types
+    std::vector<std::vector<TypeID>> typeList_;
+    std::vector<std::uniform_int_distribution<size_t>> typeDist_;
+
+    // For uniform distribution over variables of a given type
+    std::vector<
+        std::unordered_map<TypeID, std::uniform_int_distribution<size_t>>>
+        varDist_;
+};
+
 class BuiltinContext {
   public:
     std::unordered_map<std::string, FunctionSignature> builtinsFuncs = {};
     std::vector<std::string> types = {};
+    std::vector<std::vector<std::vector<TypeID>>> ops = {};
     TypeID strID = -1;
     TypeID intID = -1;
     TypeID floatID = -1;
     TypeID boolID = -1;
+    VariablePicker picker;
 };
 
 class ASTNodeValue {
@@ -82,6 +121,7 @@ class ASTScope {
     std::vector<NodeID> declarations = {};
     std::vector<NodeID> expressions = {};
     std::vector<std::string> types = {};
+    std::vector<TypeID> inheritedTypes = {};
     std::vector<int> variables = {};
     std::unordered_map<std::string, FunctionSignature> funcSignatures = {};
 };

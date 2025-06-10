@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <execinfo.h>
 #include <fstream>
 #include <iostream>
 #include <signal.h>
@@ -22,6 +23,7 @@ static std::string data_backup;
 static size_t totalRounds = 0;
 static FuzzSchedulerState scheduler;
 uint32_t newEdgeCnt = 0;
+uint32_t errCnt = 0;
 
 std::mt19937 rng(std::random_device{}());
 
@@ -29,6 +31,19 @@ int testOneInput(const std::shared_ptr<ASTData> &data,
                  const BuiltinContext &ctx) {
     data_backup = nlohmann::json(data->ast).dump();
     return runAST(data->ast, ctx);
+}
+
+void print_backtrace() {
+    void *buffer[100];
+    int nptrs = backtrace(buffer, 100);
+    char **strings = backtrace_symbols(buffer, nptrs);
+    if (strings) {
+        std::cerr << "=== Backtrace ===\n";
+        for (int i = 0; i < nptrs; ++i)
+            std::cerr << strings[i] << "\n";
+        std::cerr << "=================\n";
+        free(strings);
+    }
 }
 
 void crash_handler() {
@@ -41,6 +56,7 @@ void crash_handler() {
         std::ofstream out("corpus/saved/" + std::to_string(cnt++) + ".json");
         out << nlohmann::json(data->ast).dump();
     }
+    print_backtrace();
     _exit(1);
 }
 
@@ -49,8 +65,7 @@ void sigint_handler(int signo) {
     std::_Exit(130);
 }
 
-AST FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
-    AST ret = {};
+void FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
     if (argc != NULL && argv != NULL) {
         if (*argc >= 1 && std::strcmp((*argv)[0], "-load-saved") == 0) {
             std::string savedPath = "corpus/saved/";
@@ -66,23 +81,27 @@ AST FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
     // override potential SIGINT handler in language interpreter
     signal(SIGINT, sigint_handler);
     __sanitizer_set_death_callback(crash_handler);
-    return std::move(ret);
 }
 
-void FuzzingAST::fuzzerDriver(AST initAST) {
+void FuzzingAST::fuzzerDriver() {
     cacheCorpus.reserve(MAX_CACHE_SIZE);
     loadBuiltinsFuncs(scheduler.ctx);
     initPrimitiveTypes(scheduler.ctx);
-    std::shared_ptr<ASTData> data = std::make_shared<ASTData>();
-    data->ast = std::move(initAST);
-    if (data->ast.declarations.empty()) {
-        dummyAST(data, scheduler.ctx);
+    {
+        std::shared_ptr<ASTData> data = std::make_shared<ASTData>(ASTData{});
+        if (scheduler.corpus.empty()) {
+            dummyAST(data, scheduler.ctx);
+            scheduler.corpus.push_back(data);
+            scheduler.idx = 0;
+        } else {
+            data = scheduler.corpus[scheduler.idx];
+        }
+        // dummy check
+        if (testOneInput(data, scheduler.ctx) != 0) {
+            PANIC("Initial AST is not valid.");
+        }
     }
-    scheduler.corpus.emplace_back(data);
-    // dummy check
-    if (testOneInput(data, scheduler.ctx) != 0) {
-        PANIC("Initial AST is not valid.");
-    }
+    scheduler.ctx.picker.update(scheduler.corpus[scheduler.idx]);
     newEdgeCnt = 0; // reset edge count
     TUI::initTUI();
     while (true) {

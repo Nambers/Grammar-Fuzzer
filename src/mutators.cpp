@@ -1,12 +1,11 @@
 #include "mutators.hpp"
 #include "driver.hpp"
-#include <random>
 #include "log.hpp"
 
 using namespace FuzzingAST;
 
 int FuzzingAST::generate_execution(const std::shared_ptr<ASTData> &ast,
-                                   const BuiltinContext &ctx) {
+                                BuiltinContext &ctx) {
     for (ScopeID sid = 0; sid < ast->ast.scopes.size(); ++sid) {
         ast->ast.scopes[sid].expressions.clear();
         generate_execution_block(ast, sid, ctx);
@@ -15,7 +14,7 @@ int FuzzingAST::generate_execution(const std::shared_ptr<ASTData> &ast,
 }
 
 int FuzzingAST::mutate_declaration(const std::shared_ptr<ASTData> &ast,
-                                   const BuiltinContext &ctx) {
+                                BuiltinContext &ctx) {
     for (ScopeID sid = 0; sid < ast->ast.scopes.size(); ++sid) {
         ASTScope scope;
         do {
@@ -24,5 +23,6 @@ int FuzzingAST::mutate_declaration(const std::shared_ptr<ASTData> &ast,
         } while (reflectObject(ast->ast, scope, ctx) != 0);
         ast->ast.scopes[sid] = scope;
     }
+    ctx.picker.update(ast);
     return 0;
 }

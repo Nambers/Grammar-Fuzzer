@@ -28,8 +28,9 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
         // name [: type] = value
         const std::string &name = std::get<std::string>(node.fields[0].val);
         out << name;
-        if (node.type != -1)
-            out << ": " << getTypeName(node.type, ast, ctx);
+        // no annotation bc will conflict with global
+        // if (node.type != -1)
+        //     out << ": " << getTypeName(node.type, ast, ctx);
         out << " = ";
         valueToPython(out, node.fields[1], ast, ctx, indentLevel);
         break;
@@ -46,10 +47,14 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
         break;
 
     case ASTNodeKind::Call:
-        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        if (!std::get<std::string>(node.fields[0].val).empty()) {
+            valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+            out << " = ";
+        }
+        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
         out << "(";
-        for (size_t i = 1; i < node.fields.size(); ++i) {
-            if (i > 1)
+        for (size_t i = 2; i < node.fields.size(); ++i) {
+            if (i > 2)
                 out << ", ";
             valueToPython(out, node.fields[i], ast, ctx, indentLevel);
         }
@@ -127,6 +132,14 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
         }
         if (bodyEmpty)
             out << std::string((indentLevel + 1) * 4, ' ') << "pass";
+        break;
+    }
+    case ASTNodeKind::Custom: {
+        // every field is a string, join with space
+        out << "global " << std::get<std::string>(node.fields[0].val);
+        for (size_t i = 1; i < node.fields.size(); ++i) {
+            out << ", " << std::get<std::string>(node.fields[i].val);
+        }
         break;
     }
 

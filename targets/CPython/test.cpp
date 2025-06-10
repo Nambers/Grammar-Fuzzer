@@ -11,6 +11,11 @@ using namespace FuzzingAST;
 
 static void runASTStr(const std::string &re) {
     PyObject *code = Py_CompileString(re.c_str(), "<ast>", Py_file_input);
+    if (PyErr_Occurred()) {
+        PyErr_Print();
+        PyErr_Clear();
+        PANIC("Failed to compile AST code");
+    }
     PyObject *dict = PyDict_New();
     PyObject *name = PyUnicode_FromString("__main__");
     PyDict_SetItemString(dict, "__name__", name);

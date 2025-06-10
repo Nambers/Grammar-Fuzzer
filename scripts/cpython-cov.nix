@@ -10,7 +10,7 @@ pkgs.mkShell {
     cpython-inst
     ninja
     lcov
-    mold
+    mold-wrapped
   ];
   shellHook = ''
     export ASAN_OPTIONS='detect_leaks=0';
