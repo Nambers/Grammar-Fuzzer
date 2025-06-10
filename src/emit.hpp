@@ -6,7 +6,7 @@
 #include <vector>
 
 namespace FuzzingAST {
-constexpr size_t MAX_CACHE_SIZE = 500;
+constexpr size_t MAX_CACHE_SIZE = 100;
 extern std::vector<std::string> cacheCorpus;
 void fuzzerEmitCacheCorpus();
 void fuzzerLoadCorpus(const std::string &savedPath,

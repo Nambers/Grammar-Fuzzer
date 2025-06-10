@@ -171,9 +171,13 @@ int FuzzingAST::mutate_expression(const std::shared_ptr<ASTData> &ast,
 
             fun.fields.push_back({fnName});         // <name>
             fun.fields.push_back({sig.returnType}); // <ret‑type>
-            std::string arg = "a";
+            std::string arg = "arg_a";
+            auto &funScope = ast->ast.scopes[fun.scope];
             for (TypeID pt : sig.paramTypes) { // [param‑types ...]
                 fun.fields.push_back({arg});
+                funScope.variables.push_back(ast->ast.declarations.size());
+                ast->ast.declarations.push_back(
+                    ASTNode{ASTNodeKind::DeclareVar, pt, {{arg}}});
                 bumpIdentifier(arg);
                 fun.fields.push_back({pt});
             }

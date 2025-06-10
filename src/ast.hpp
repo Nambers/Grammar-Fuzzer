@@ -21,16 +21,16 @@ constexpr std::array BINARY_OPS{"+",  "-",  "*",  "/", "%",  "**",
 constexpr std::array UNARY_OPS{"-", "not", "~"};
 
 enum class ASTNodeKind {
-    Function = 0, // def f(x):
-    Class,        // class A:
-    DeclareVar,   // var a = ...
-    Import,       // import x
-                  // ---
-    Assign,       // x = y
-    Call,         // f(x)
-    Return,       // return x
-    BinaryOp,     // x + y
-    UnaryOp,      // -x
+    Function = 0,   // def f(x):
+    Class,          // class A:
+    DeclareVar,     // var a = ...
+    Import,         // import x
+                    // ---
+    Assign,         // x = y
+    Call,           // f(x)
+    Return,         // return x
+    BinaryOp,       // x + y
+    UnaryOp,        // -x
     // ---
     Custom,
 };
@@ -85,6 +85,7 @@ class BuiltinContext {
     std::unordered_map<std::string, FunctionSignature> builtinsFuncs = {};
     std::vector<std::string> types = {};
     std::vector<std::vector<std::vector<TypeID>>> ops = {};
+    std::vector<std::vector<TypeID>> unaryOps = {};
     TypeID strID = -1;
     TypeID intID = -1;
     TypeID floatID = -1;

@@ -17,18 +17,19 @@
 
 using namespace FuzzingAST;
 extern "C" void __sanitizer_set_death_callback(void (*)(void));
-constexpr size_t SAVE_POINT = 1000; // save every 1000 rounds
+extern std::vector<std::string> FuzzingAST::cacheCorpus;
 
 static std::string data_backup;
 static size_t totalRounds = 0;
 static FuzzSchedulerState scheduler;
 uint32_t newEdgeCnt = 0;
 uint32_t errCnt = 0;
+uint32_t corpusSize = 0;
 
 std::mt19937 rng(std::random_device{}());
 
 int testOneInput(const std::shared_ptr<ASTData> &data,
-                 const BuiltinContext &ctx) {
+                BuiltinContext &ctx) {
     data_backup = nlohmann::json(data->ast).dump();
     return runAST(data->ast, ctx);
 }
@@ -67,10 +68,10 @@ void sigint_handler(int signo) {
 
 void FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
     if (argc != NULL && argv != NULL) {
-        if (*argc >= 1 && std::strcmp((*argv)[0], "-load-saved") == 0) {
-            std::string savedPath = "corpus/saved/";
-            if (*argc == 2 && (*argv)[1] != nullptr) {
-                savedPath = (*argv)[1];
+        if (*argc >= 2 && std::strcmp((*argv)[1], "-load-saved") == 0) {
+            std::string savedPath = "./corpus/saved";
+            if (*argc == 3 && (*argv)[2] != nullptr) {
+                savedPath = std::string((*argv)[2]);
             }
             INFO("Loading saved corpus from: {}", savedPath);
             fuzzerLoadCorpus(savedPath, scheduler.corpus);
@@ -101,8 +102,10 @@ void FuzzingAST::fuzzerDriver() {
             PANIC("Initial AST is not valid.");
         }
     }
+    corpusSize = scheduler.corpus.size();
     scheduler.ctx.picker.update(scheduler.corpus[scheduler.idx]);
     newEdgeCnt = 0; // reset edge count
+    cacheCorpus.reserve(MAX_CACHE_SIZE);
     TUI::initTUI();
     while (true) {
         // if (scheduler.corpus.empty()) {
@@ -156,6 +159,7 @@ void FuzzingAST::fuzzerDriver() {
             mutate_declaration(newData, scheduler.ctx);
             scheduler.update(0, newData->ast.declarations.size());
             scheduler.corpus.emplace_back(newData);
+            ++corpusSize;
             scheduler.idx = scheduler.corpus.size() - 1;
             break;
         }

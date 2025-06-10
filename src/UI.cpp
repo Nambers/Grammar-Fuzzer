@@ -17,6 +17,7 @@ const static std::string stage_names[] = {
 
 extern uint32_t newEdgeCnt;
 extern uint32_t errCnt;
+extern uint32_t corpusSize;
 
 class RingBuffer {
   public:
@@ -115,7 +116,7 @@ class LineBuf : public std::streambuf {
     std::string line_buffer_;
 };
 
-constexpr size_t LOG_LINES = 24;
+constexpr size_t LOG_LINES = 50;
 static RingBuffer stdout_buffer(LOG_LINES);
 static RingBuffer stderr_buffer(LOG_LINES);
 static LineBuf stdout_linebuf(stdout_buffer);
@@ -176,7 +177,9 @@ void FuzzingAST::TUI::writeTUI(const FuzzingAST::FuzzSchedulerState &state,
                   text(std::to_string(state.execStallCount)), separator(),
                   text("ASTSize: ") | dim, text(std::to_string(currentASTSize)),
                   separator(), text("ExecThresh: ") | dim,
-                  text(std::to_string(state.execFailureThreshold()))}),
+                  text(std::to_string(state.execFailureThreshold())),
+                  separator(), text("CorpusSize: ") | dim,
+                  text(std::to_string(corpusSize))}),
             filler(),
         }) |
         flex;

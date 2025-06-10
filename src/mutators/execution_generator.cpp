@@ -106,6 +106,17 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
                         globalVars.insert(retVar);
                     }
                 }
+                if (sig.selfType != -1) {
+                    // if it's a method, add self as first parameter
+                    const auto &selfVar =
+                        picker.pickRandomVar(scopeID, sig.selfType);
+                    if (selfVar.empty()) {
+                        state = MutationState::STATE_REROLL;
+                        break;
+                    }
+                    globalVars.insert(selfVar);
+                    curr.fields.push_back({selfVar});
+                }
                 // parameters
                 for (auto paramType : sig.paramTypes) {
                     const auto &paramVar =
@@ -136,31 +147,43 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
             }
 
             case ASTNodeKind::BinaryOp: {
-                TypeID t = picker.pickRandomType(scopeID);
-                auto a = picker.pickRandomVar(scopeID, t);
                 auto op = pickBinaryOp(rng);
-                // pick a var for RHS that matches op type
-                // here we simply reuse t for simplicity
                 const auto &slice = ctx.ops[op];
-                auto b = std::string{};
-                if (slice.size() <= t) {
-                    b = picker.pickRandomVar(scopeID, slice[t][0]);
-                } else {
-                    b = picker.pickRandomVar(scopeID, t);
+                TypeID t1 = rng() % slice.size();
+                if (slice.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
                 }
+                if (slice[t1].empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                TypeID t2 = slice[t1][rng() % slice[t1].size()];
+
+                auto a = picker.pickRandomVar(scopeID, t1);
                 globalVars.insert(a);
                 curr.fields = {{a},
-                               {b},
+                               {picker.pickRandomVar(scopeID, t1)},
                                {BINARY_OPS[op]},
-                               {picker.pickRandomVar(scopeID, t)}};
+                               {picker.pickRandomVar(scopeID, t2)}};
                 break;
             }
 
             case ASTNodeKind::UnaryOp: {
-                TypeID t = picker.pickRandomType(scopeID);
+                auto op = pickUnaryOp(rng);
+                const auto &slice = ctx.unaryOps[op];
+                if (slice.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                TypeID t = slice[rng() % slice.size()];
                 auto a = picker.pickRandomVar(scopeID, t);
-                auto op = UNARY_OPS[pickUnaryOp(rng)];
-                curr.fields = {{a}, {op}, {picker.pickRandomVar(scopeID, t)}};
+                if (a.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                curr.fields = {
+                    {a}, {UNARY_OPS[op]}, {picker.pickRandomVar(scopeID, t)}};
                 globalVars.insert(a);
                 break;
             }
@@ -175,7 +198,7 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
             break;
         }
     }
-    if (scopeID != 0) {
+    if (scopeID != 0 && !globalVars.empty()) {
         ast->ast.scopes[scopeID].expressions.insert(
             ast->ast.scopes[scopeID].expressions.begin(),
             ast->ast.expressions.size());

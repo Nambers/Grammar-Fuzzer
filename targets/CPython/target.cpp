@@ -83,76 +83,6 @@ void installSignalHandler() {
     }
 }
 
-static int runInternal(PyObject *code, bool readResult = false,
-                       std::string *outStr = nullptr,
-                       uint32_t timeoutMs = 1000) {
-    if (sigsetjmp(timeoutJmp, 1) == 0) {
-        PyObjectPtr dict(PyDict_New());
-        PyObjectPtr name(PyUnicode_FromString("__main__"));
-        PyDict_SetItemString(dict.get(), "__name__", name.get());
-        PyDict_SetItemString(dict.get(), "__builtins__", PyEval_GetBuiltins());
-        if (readResult) {
-            PyObjectPtr result(PyEval_EvalCode(code, dict.get(), dict.get()));
-            if (!result) {
-                if (PyErr_Occurred()) {
-#ifndef DISABLE_DEBUG_OUTPUT
-                    PyErr_Print();
-#endif
-                    PyErr_Clear();
-                    return -1;
-                }
-            }
-            result.reset(
-                PyEval_EvalCode(driverPyCodeObj, dict.get(), dict.get()));
-            if (!result) {
-                if (PyErr_Occurred()) {
-#ifndef DISABLE_DEBUG_OUTPUT
-                    PyErr_Print();
-#endif
-                    PyErr_Clear();
-                    PANIC("Failed to run driver.py");
-                }
-            }
-            // a borrowed ptr, no need to DECREF
-            PyObject *rawJson = PyDict_GetItemString(dict.get(), "result");
-            if (!rawJson) {
-                PyErr_Print();
-                PANIC("Failed to get 'result' from driver.py");
-            }
-            if (!PyUnicode_Check(rawJson)) {
-                PyErr_Print();
-                PANIC("'result' from driver.py is not a string");
-            }
-            outStr->assign(PyUnicode_AsUTF8(rawJson));
-            return 0;
-
-        } else {
-            set_timeout_ms(timeoutMs);
-            PyObjectPtr result(PyEval_EvalCode(code, dict.get(), dict.get()));
-            clear_timeout(); // cancel timeout
-
-            if (!result) {
-                if (PyErr_Occurred()) {
-#ifndef DISABLE_DEBUG_OUTPUT
-                    PyErr_Print();
-#endif
-                    PyErr_Clear();
-                    ++errCnt;
-                    return -1;
-                }
-            }
-            return 0;
-        }
-    } else {
-        clear_timeout();
-        // PyErr_SetString(PyExc_RuntimeError, "Execution timed out");
-        finalize();
-
-        initialize(nullptr, nullptr);
-        return -2;
-    }
-}
-
 int FuzzingAST::initialize(int *argc, char ***argv) {
     std::ifstream driverPyStream("./targets/CPython/driver.py");
     if (!driverPyStream.is_open()) {
@@ -208,6 +138,8 @@ void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
     ctx.types.swap(tmp2);
     auto tmp3 = j["ops"].get<std::vector<std::vector<std::vector<TypeID>>>>();
     ctx.ops.swap(tmp3);
+    auto tmp4 = j["uops"].get<std::vector<std::vector<TypeID>>>();
+    ctx.unaryOps.swap(tmp4);
 }
 
 void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,
@@ -254,7 +186,133 @@ static TypeID resolveType(const std::string &name, const BuiltinContext &ctx,
     return 0; // fallback to "object"
 }
 
-int FuzzingAST::runAST(const AST &ast, const BuiltinContext &ctx, bool echo) {
+static inline void errorCallback(PyObjectPtr &exc, const AST &ast,
+                                 BuiltinContext &ctx) {
+    PyObjectPtr errVal(PyObject_Str(exc.get()));
+    std::string errMsg(PyUnicode_AsUTF8(errVal.get()));
+#ifndef DISABLE_DEBUG_OUTPUT
+    // PyErr_Print();
+    ERROR("Failed to run code: {}", errMsg);
+#endif
+    // fix builtin sig dynamically
+    if (PyErr_GivenExceptionMatches(exc.get(), PyExc_TypeError)) {
+        const static std::string badUnaryOp("bad operand type for unary ");
+        if (errMsg.starts_with(badUnaryOp)) {
+            // e.g. bad operand type for unary ~: 'str'
+            auto colonPos = errMsg.find(":");
+            if (colonPos == std::string::npos)
+                return;
+            std::string opName = errMsg.substr(badUnaryOp.length(),
+                                               colonPos - badUnaryOp.length());
+
+            auto firstQuote = errMsg.find("'", colonPos);
+            auto lastQuote = errMsg.rfind("'");
+            if (firstQuote == std::string::npos ||
+                lastQuote == std::string::npos || firstQuote >= lastQuote)
+                return;
+
+            std::string targetType =
+                errMsg.substr(firstQuote + 1, lastQuote - firstQuote - 1);
+
+            auto opIt = std::find(UNARY_OPS.begin(), UNARY_OPS.end(), opName);
+            if (opIt == UNARY_OPS.end())
+                return;
+            auto &op = ctx.unaryOps[opIt - UNARY_OPS.begin()];
+
+            auto typeIt =
+                std::find(ctx.types.begin(), ctx.types.end(), targetType);
+            if (typeIt == ctx.types.end())
+                return;
+            TypeID typeID = typeIt - ctx.types.begin();
+
+            auto found = std::find(op.begin(), op.end(), typeID);
+            if (found != op.end()) {
+                op.erase(found);
+                INFO("Removed typeID {} from unary op '{}'", typeID, opName);
+            } else {
+                // INFO("TypeID {} not found in op '{}', nothing to remove",
+                //      typeID, opName);
+            }
+        }
+        auto badDescriptor = "descriptor ";
+        if (errMsg.starts_with(badDescriptor)) {
+            // e.g. descriptor '__rand__' requires a 'bool' object but received
+            // a 'str'
+            // TODO
+        }
+        // TODO
+    }
+}
+
+static int runInternal(const AST &ast, BuiltinContext &ctx, PyObject *code,
+                       bool readResult = false, std::string *outStr = nullptr,
+                       uint32_t timeoutMs = 500) {
+    if (sigsetjmp(timeoutJmp, 1) == 0) {
+        PyObjectPtr dict(PyDict_New());
+        PyObjectPtr name(PyUnicode_FromString("__main__"));
+        PyDict_SetItemString(dict.get(), "__name__", name.get());
+        PyDict_SetItemString(dict.get(), "__builtins__", PyEval_GetBuiltins());
+        if (readResult) {
+            PyObjectPtr result(PyEval_EvalCode(code, dict.get(), dict.get()));
+            if (!result) {
+                if (PyErr_Occurred()) {
+                    PyObjectPtr exc(PyErr_GetRaisedException());
+                    errorCallback(exc, ast, ctx);
+                    PyErr_Clear();
+                    return -1;
+                }
+            }
+            result.reset(
+                PyEval_EvalCode(driverPyCodeObj, dict.get(), dict.get()));
+            if (!result) {
+                if (PyErr_Occurred()) {
+#ifndef DISABLE_DEBUG_OUTPUT
+                    PyErr_Print();
+#endif
+                    PyErr_Clear();
+                    PANIC("Failed to run driver.py");
+                }
+            }
+            // a borrowed ptr, no need to DECREF
+            PyObject *rawJson = PyDict_GetItemString(dict.get(), "result");
+            if (!rawJson) {
+                PyErr_Print();
+                PANIC("Failed to get 'result' from driver.py");
+            }
+            if (!PyUnicode_Check(rawJson)) {
+                PyErr_Print();
+                PANIC("'result' from driver.py is not a string");
+            }
+            outStr->assign(PyUnicode_AsUTF8(rawJson));
+            return 0;
+
+        } else {
+            set_timeout_ms(timeoutMs);
+            PyObjectPtr result(PyEval_EvalCode(code, dict.get(), dict.get()));
+            clear_timeout(); // cancel timeout
+
+            if (!result) {
+                if (PyErr_Occurred()) {
+                    PyObjectPtr exc(PyErr_GetRaisedException());
+                    errorCallback(exc, ast, ctx);
+                    PyErr_Clear();
+                    ++errCnt;
+                    return -1;
+                }
+            }
+            return 0;
+        }
+    } else {
+        clear_timeout();
+        // PyErr_SetString(PyExc_RuntimeError, "Execution timed out");
+        finalize();
+
+        initialize(nullptr, nullptr);
+        return -2;
+    }
+}
+
+int FuzzingAST::runAST(const AST &ast, BuiltinContext &ctx, bool echo) {
     std::ostringstream script;
     scopeToPython(script, 0, ast, ctx, 0);
     std::string re = script.str();
@@ -272,13 +330,13 @@ int FuzzingAST::runAST(const AST &ast, const BuiltinContext &ctx, bool echo) {
         return -1;
     }
 
-    auto ret = runInternal(code);
+    auto ret = runInternal(ast, ctx, code);
     Py_DECREF(code);
     return ret;
 }
 
 int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
-                              const BuiltinContext &ctx) {
+                              BuiltinContext &ctx) {
     std::ostringstream script;
 
     bool empty = true;
@@ -307,7 +365,7 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     }
 
     std::string jsonStr;
-    int ret = runInternal(code, true, &jsonStr);
+    int ret = runInternal(ast, ctx, code, true, &jsonStr);
     Py_DECREF(code);
     if (ret != 0)
         return ret;
