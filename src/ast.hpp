@@ -2,7 +2,7 @@
 #define AST_HPP
 
 #include <array>
-#include <memory>
+#include <random>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -32,7 +32,7 @@ enum class ASTNodeKind {
     BinaryOp,     // x + y
     UnaryOp,      // -x
     // ---
-    Custom,
+    GlobalRef,
 };
 
 constexpr ASTNodeKind DECL_NODE_END = ASTNodeKind::Import;
@@ -64,7 +64,7 @@ class BuiltinContext {
   public:
     // Build index for all scopes, merging parent scope and initializing
     // distributions
-    void update(const std::shared_ptr<ASTData> &ast);
+    void update(ASTData &ast);
 
     // Pick a random type available in given scope (fallback to 0)
     TypeID pickRandomType(ScopeID scopeID);
@@ -79,7 +79,7 @@ class BuiltinContext {
                               const std::vector<TypeID> &types);
 
     const std::pair<const std::string, FunctionSignature> &
-    pickRandomFunc(const std::shared_ptr<ASTData> &ast, ScopeID scopeID);
+    pickRandomFunc(const ASTData &ast, ScopeID scopeID);
 
   private:
     std::vector<std::unordered_map<TypeID, std::vector<std::string>>>

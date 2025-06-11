@@ -145,8 +145,7 @@ void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
     ctx.unaryOps.swap(tmp4);
 }
 
-void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,
-                          const BuiltinContext &ctx) {
+void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
     // dummy corpus
     // decl:
     // + str_a = ""
@@ -155,24 +154,24 @@ void FuzzingAST::dummyAST(const std::shared_ptr<ASTData> &data,
     // + int_a = 0
     TypeID bytesType = std::find(ctx.types.begin(), ctx.types.end(), "bytes") -
                        ctx.types.begin();
-    data->ast.declarations.push_back(
+    data.ast.declarations.push_back(
         {ASTNodeKind::DeclareVar, ctx.strID, {{"str_a"}, {"\"\""}}});
-    data->ast.declarations.push_back(
+    data.ast.declarations.push_back(
         {ASTNodeKind::DeclareVar, ctx.strID, {{"str_b"}, {"\"\""}}});
-    data->ast.declarations.push_back(
+    data.ast.declarations.push_back(
         {ASTNodeKind::DeclareVar, bytesType, {{"byte_a"}, {"b\"\""}}});
-    data->ast.declarations.push_back(
+    data.ast.declarations.push_back(
         {ASTNodeKind::DeclareVar, ctx.intID, {{"int_a"}, {0}}});
-    data->ast.scopes[0].declarations.resize(4);
-    data->ast.scopes[0].variables.resize(4);
-    data->ast.scopes[0].declarations[0] = 0;
-    data->ast.scopes[0].declarations[1] = 1;
-    data->ast.scopes[0].declarations[2] = 2;
-    data->ast.scopes[0].declarations[3] = 3;
-    data->ast.scopes[0].variables[0] = 0;
-    data->ast.scopes[0].variables[1] = 1;
-    data->ast.scopes[0].variables[2] = 2;
-    data->ast.scopes[0].variables[3] = 3;
+    data.ast.scopes[0].declarations.resize(4);
+    data.ast.scopes[0].variables.resize(4);
+    data.ast.scopes[0].declarations[0] = 0;
+    data.ast.scopes[0].declarations[1] = 1;
+    data.ast.scopes[0].declarations[2] = 2;
+    data.ast.scopes[0].declarations[3] = 3;
+    data.ast.scopes[0].variables[0] = 0;
+    data.ast.scopes[0].variables[1] = 1;
+    data.ast.scopes[0].variables[2] = 2;
+    data.ast.scopes[0].variables[3] = 3;
 }
 
 static TypeID resolveType(const std::string &name, const BuiltinContext &ctx,

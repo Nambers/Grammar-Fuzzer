@@ -15,7 +15,7 @@ cleanup() {
 
     echo "[run.sh] Killing fuzzer (PID=$FUZZ_PID)..."
     kill -s SIGINT "$FUZZ_PID" 2>/dev/null || true
-    wait "$FUZZ_PID"
+    wait "$FUZZ_PID" 2>/dev/null || true
 
     # Try graceful shutdown of cov
     kill -s SIGINT "$COV_PID" 2>/dev/null || true

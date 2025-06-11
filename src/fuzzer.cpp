@@ -28,23 +28,23 @@ uint32_t corpusSize = 0;
 
 std::mt19937 rng(std::random_device{}());
 
-int testOneInput(const std::shared_ptr<ASTData> &data, BuiltinContext &ctx) {
-    data_backup = nlohmann::json(data->ast).dump();
-    return runAST(data->ast, ctx);
+int testOneInput(const ASTData &data, BuiltinContext &ctx) {
+    data_backup = nlohmann::json(data.ast).dump();
+    return runAST(data.ast, ctx);
 }
 
-void print_backtrace() {
-    void *buffer[100];
-    int nptrs = backtrace(buffer, 100);
-    char **strings = backtrace_symbols(buffer, nptrs);
-    if (strings) {
-        std::cerr << "=== Backtrace ===\n";
-        for (int i = 0; i < nptrs; ++i)
-            std::cerr << strings[i] << "\n";
-        std::cerr << "=================\n";
-        free(strings);
-    }
-}
+// void print_backtrace() {
+//     void *buffer[100];
+//     int nptrs = backtrace(buffer, 100);
+//     char **strings = backtrace_symbols(buffer, nptrs);
+//     if (strings) {
+//         std::cerr << "=== Backtrace ===\n";
+//         for (int i = 0; i < nptrs; ++i)
+//             std::cerr << strings[i] << "\n";
+//         std::cerr << "=================\n";
+//         free(strings);
+//     }
+// }
 
 void crash_handler() {
     TUI::finalizeTUI();
@@ -54,9 +54,9 @@ void crash_handler() {
     int cnt = 0;
     for (const auto &data : scheduler.corpus) {
         std::ofstream out("corpus/saved/" + std::to_string(cnt++) + ".json");
-        out << nlohmann::json(data->ast).dump();
+        out << nlohmann::json(data.ast).dump();
     }
-    print_backtrace();
+    // print_backtrace();
     _exit(1);
 }
 
@@ -88,7 +88,7 @@ void FuzzingAST::fuzzerDriver() {
     loadBuiltinsFuncs(scheduler.ctx);
     initPrimitiveTypes(scheduler.ctx);
     {
-        std::shared_ptr<ASTData> data = std::make_shared<ASTData>(ASTData{});
+        ASTData data;
         if (scheduler.corpus.empty()) {
             dummyAST(data, scheduler.ctx);
             scheduler.corpus.push_back(data);
@@ -113,25 +113,23 @@ void FuzzingAST::fuzzerDriver() {
         switch (scheduler.phase) {
         case MutationPhase::ExecutionGeneration: {
             // continue generation on current
-            std::shared_ptr<ASTData> newData =
-                std::make_shared<ASTData>(*scheduler.corpus[scheduler.idx]);
-            newData->ast.expressions.clear();
+            ASTData newData = scheduler.corpus[scheduler.idx];
             generate_execution(newData, scheduler.ctx);
             // if fail to run, drop the result and do it again.
             const auto cacheNewEdgeCnt = newEdgeCnt;
             if (testOneInput(newData, scheduler.ctx) == 0) {
                 if (newEdgeCnt > cacheNewEdgeCnt) {
-                    scheduler.update(1, newData->ast.declarations.size());
+                    scheduler.update(1, newData.ast.declarations.size());
 
                     cacheCorpus.emplace_back(
-                        nlohmann::json(newData->ast).dump());
+                        nlohmann::json(newData.ast).dump());
                     if (cacheCorpus.size() > MAX_CACHE_SIZE) {
                         fuzzerEmitCacheCorpus();
                         cacheCorpus.clear();
                     }
 
                 } else {
-                    scheduler.update(0, newData->ast.declarations.size());
+                    scheduler.update(0, newData.ast.declarations.size());
                 }
             }
             break;
@@ -145,7 +143,7 @@ void FuzzingAST::fuzzerDriver() {
                 scheduler.idx = rng() % (scheduler.corpus.size() / 2);
                 scheduler.update(
                     0,
-                    scheduler.corpus[scheduler.idx]->ast.declarations.size());
+                    scheduler.corpus[scheduler.idx].ast.declarations.size());
                 break;
             }
         }
@@ -153,10 +151,10 @@ void FuzzingAST::fuzzerDriver() {
         case MutationPhase::DeclarationMutation: {
             newEdgeCnt = 0; // reset edge count for declaration change
             // continue mutating on current
-            std::shared_ptr<ASTData> newData = scheduler.corpus[scheduler.idx];
+            ASTData newData = scheduler.corpus[scheduler.idx];
             mutate_declaration(newData, scheduler.ctx);
-            scheduler.update(0, newData->ast.declarations.size());
-            scheduler.corpus.emplace_back(newData);
+            scheduler.update(0, newData.ast.declarations.size());
+            scheduler.corpus.push_back(newData);
             ++corpusSize;
             scheduler.idx = scheduler.corpus.size() - 1;
             break;

@@ -70,7 +70,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ASTNodeKind,
                               {ASTNodeKind::Return, "Return"},
                               {ASTNodeKind::BinaryOp, "BinaryOp"},
                               {ASTNodeKind::UnaryOp, "UnaryOp"},
-                              {ASTNodeKind::Custom, "Custom"}});
+                              {ASTNodeKind::GlobalRef, "GlobalRef"}});
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTNode, kind, fields, scope, type);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTScope, declarations, expressions,
                                    variables, types, inheritedTypes,

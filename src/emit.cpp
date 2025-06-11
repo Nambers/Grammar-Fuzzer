@@ -1,12 +1,11 @@
 #include "emit.hpp"
+#include "serialization.hpp"
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <random>
 #include <set>
 #include <string>
-#include <vector>
-#include "serialization.hpp"
 
 namespace fs = std::filesystem;
 using namespace FuzzingAST;
@@ -22,7 +21,7 @@ std::string FuzzingAST::make_unique_filename(int counter) {
 }
 
 void FuzzingAST::fuzzerLoadCorpus(const std::string &savedPath,
-                                  std::vector<std::shared_ptr<ASTData>> &corpus) {
+                                  std::deque<ASTData> &corpus) {
     corpus.clear();
     std::set<std::string> pathes;
     for (const auto &entry : fs::directory_iterator(savedPath)) {
@@ -35,8 +34,8 @@ void FuzzingAST::fuzzerLoadCorpus(const std::string &savedPath,
             std::string content((std::istreambuf_iterator<char>(in)),
                                 std::istreambuf_iterator<char>());
             auto jsonData = nlohmann::json::parse(content);
-            auto astData = std::make_shared<ASTData>();
-            astData->ast = jsonData.get<AST>();
+            ASTData astData;
+            astData.ast = jsonData.get<AST>();
 
             corpus.push_back(astData);
         }

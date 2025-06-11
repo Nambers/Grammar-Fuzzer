@@ -13,8 +13,7 @@ static std::uniform_int_distribution<int>
     pickExec(static_cast<int>(EXEC_NODE_START),
              static_cast<int>(EXEC_NODE_END));
 
-int FuzzingAST::generate_line(ASTNode &node,
-                              const std::shared_ptr<ASTData> &ast,
+int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                               BuiltinContext &ctx,
                               std::unordered_set<std::string> &globalVars,
                               ScopeID scopeID, const ASTScope &scope) {
@@ -34,6 +33,10 @@ int FuzzingAST::generate_line(ASTNode &node,
             // pick a random type and two vars
             TypeID t = ctx.pickRandomType(scopeID);
             auto v1 = ctx.pickRandomVar(scopeID, t);
+            if (v1.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
             auto v2 = ctx.pickRandomVar(scopeID, t);
             curr.fields = {{v1}, {v2}};
             globalVars.insert(v1);
@@ -93,11 +96,11 @@ int FuzzingAST::generate_line(ASTNode &node,
         case ASTNodeKind::BinaryOp: {
             auto op = pickBinaryOp(rng);
             const auto &slice = ctx.ops[op];
-            TypeID t1 = rng() % slice.size();
             if (slice.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
+            TypeID t1 = rng() % slice.size();
             if (slice[t1].empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
@@ -143,12 +146,11 @@ int FuzzingAST::generate_line(ASTNode &node,
     return 0;
 }
 
-int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
-                                         const ScopeID &scopeID,
+int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
                                          BuiltinContext &ctx) {
 
-    const int NUM_GEN = ast->ast.scopes[scopeID].declarations.size() * 2;
-    ASTScope &scope = ast->ast.scopes[scopeID];
+    const int NUM_GEN = ast.ast.scopes[scopeID].declarations.size() * 2;
+    ASTScope &scope = ast.ast.scopes[scopeID];
     scope.expressions.resize(NUM_GEN, -1);
 
     std::unordered_set<std::string> globalVars;
@@ -156,13 +158,15 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
     for (int i = 0; i < NUM_GEN; ++i) {
         auto &nodeId = scope.expressions[i];
         if (nodeId == -1) {
-            nodeId = static_cast<NodeID>(ast->ast.expressions.size());
-            ast->ast.expressions.emplace_back();
+            nodeId = static_cast<NodeID>(ast.ast.expressions.size());
+            ast.ast.expressions.emplace_back();
             scope.expressions[i] = nodeId;
         }
-        if (generate_line(ast->ast.expressions[nodeId], ast, ctx, globalVars,
+        const auto oldExprCount = ast.ast.expressions.size();
+        if (generate_line(ast.ast.expressions[nodeId], ast, ctx, globalVars,
                           scopeID, scope) != 0) {
             scope.expressions.resize(i);
+            ast.ast.expressions.resize(oldExprCount);
             break;
         }
     }
@@ -171,7 +175,7 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
         for (auto it = globalVars.begin(); it != globalVars.end();) {
             bool found = false;
             for (const auto &varID : scope.variables) {
-                const auto &decl = ast->ast.declarations[varID];
+                const auto &decl = ast.ast.declarations[varID];
                 if (std::get<std::string>(decl.fields[0].val) == *it) {
                     it = globalVars.erase(it);
                     found = true;
@@ -183,16 +187,15 @@ int FuzzingAST::generate_execution_block(const std::shared_ptr<ASTData> &ast,
             }
         }
         if (!globalVars.empty()) {
-            ast->ast.scopes[scopeID].expressions.insert(
-                ast->ast.scopes[scopeID].expressions.begin(),
-                ast->ast.expressions.size());
+            scope.expressions.insert(scope.expressions.begin(),
+                                     ast.ast.expressions.size());
             ASTNode globalVarsNode;
-            globalVarsNode.kind = ASTNodeKind::Custom;
+            globalVarsNode.kind = ASTNodeKind::GlobalRef;
             globalVarsNode.fields.reserve(globalVars.size());
             for (const auto &var : globalVars) {
-                globalVarsNode.fields.push_back({var});
+                globalVarsNode.fields.emplace_back(var);
             }
-            ast->ast.expressions.push_back(globalVarsNode);
+            ast.ast.expressions.push_back(globalVarsNode);
         }
     }
     return 0;

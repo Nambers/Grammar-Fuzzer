@@ -1,7 +1,6 @@
 #ifndef FUZZER_HPP
 #define FUZZER_HPP
 #include "ast.hpp"
-#include <memory>
 #include <random>
 
 namespace FuzzingAST {

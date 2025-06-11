@@ -2,8 +2,8 @@
 #define FUZZSCHEDULERSTATE_HPP
 
 #include "ast.hpp"
-#include <memory>
 #include <stddef.h>
+#include <deque>
 
 namespace FuzzingAST {
 enum class MutationPhase {
@@ -19,7 +19,7 @@ class FuzzSchedulerState {
 	MutationPhase phase = MutationPhase::ExecutionGeneration;
 	// corpus index
 	uint idx = 0;
-	std::vector<std::shared_ptr<ASTData>> corpus;
+	std::deque<ASTData> corpus;
 
 	// if failed to find new edge for 5 mutated declaration in a row, fallback
 	size_t maxDeclFailures = 5;

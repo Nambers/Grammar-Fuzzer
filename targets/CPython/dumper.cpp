@@ -134,7 +134,7 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
             out << std::string((indentLevel + 1) * 4, ' ') << "pass";
         break;
     }
-    case ASTNodeKind::Custom: {
+    case ASTNodeKind::GlobalRef: {
         // every field is a string, join with space
         out << "global " << std::get<std::string>(node.fields[0].val);
         for (size_t i = 1; i < node.fields.size(); ++i) {

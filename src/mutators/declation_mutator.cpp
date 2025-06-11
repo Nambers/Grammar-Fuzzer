@@ -90,34 +90,33 @@ static std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
 
 AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                                   const BuiltinContext &ctx) {
-    ast.scopes.reserve(ast.scopes.size() + 1);
-    auto &scope = ast.scopes[sid];
-    for (NodeID i : scope.declarations) {
-        auto &node = ast.declarations[i];
-        if (node.kind == ASTNodeKind::DeclareVar) {
-            if (node.type == ctx.strID) {
-                havoc(std::get<std::string>(node.fields[1].val), 50);
-            } else if (node.type == ctx.intID) {
-                static std::uniform_int_distribution<int64_t> pickNum(
-                    0, INT64_MAX);
-                node.fields[1].val = pickNum(rng);
-            } else if (node.type == ctx.floatID) {
-                static std::uniform_real_distribution<double> pickFloat(-1e6,
-                                                                        1e6);
-                node.fields[1].val = pickFloat(rng);
-            } else if (node.type == ctx.boolID) {
-                node.fields[1].val = (rng() % 2) == 0;
+    size_t typesCnt;
+    ScopeID parentScopeID;
+    {
+        auto &scope = ast.scopes[sid];
+        for (NodeID i : scope.declarations) {
+            auto &node = ast.declarations[i];
+            if (node.kind == ASTNodeKind::DeclareVar) {
+                if (node.type == ctx.strID) {
+                    havoc(std::get<std::string>(node.fields[1].val), 50);
+                } else if (node.type == ctx.intID) {
+                    static std::uniform_int_distribution<int64_t> pickNum(
+                        0, INT64_MAX);
+                    node.fields[1].val = pickNum(rng);
+                } else if (node.type == ctx.floatID) {
+                    static std::uniform_real_distribution<double> pickFloat(
+                        -1e6, 1e6);
+                    node.fields[1].val = pickFloat(rng);
+                } else if (node.type == ctx.boolID) {
+                    node.fields[1].val = (rng() % 2) == 0;
+                }
             }
         }
-    }
-    MutationState state = MutationState::STATE_REROLL;
-    size_t typesCnt = scope.types.size() + ctx.types.size();
-    const ASTScope &parentScope =
-        scope.parent != -1 ? ast.scopes[scope.parent] : scope;
-    if (scope.parent != -1) {
-        typesCnt += ast.scopes[scope.parent].types.size();
+        parentScopeID = scope.parent;
+        typesCnt = scope.types.size() + ctx.types.size();
     }
     std::uniform_int_distribution<size_t> pickType(0, typesCnt - 1);
+    MutationState state = MutationState::STATE_REROLL;
     while (state == MutationState::STATE_REROLL) {
         state = MutationState::STATE_OK;
         // do other mutations
@@ -125,40 +124,51 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
         switch (pick) {
             /* ----------  AddFunction  ---------- */
         case MutationPick::AddFunction: {
-            std::vector<NodeID> classes;
-            for (size_t i = 0; i < ast.declarations.size(); ++i)
-                if (ast.declarations[i].kind == ASTNodeKind::Class)
-                    classes.push_back(static_cast<NodeID>(i));
+            NodeID clsID;
+            {
+                std::vector<NodeID> classes;
+                for (size_t i = 0; i < ast.declarations.size(); ++i)
+                    if (ast.declarations[i].kind == ASTNodeKind::Class)
+                        classes.push_back(i);
 
-            if (classes.empty()) {
-                state = MutationState::STATE_REROLL;
-                break;
+                if (classes.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+
+                clsID = classes[rng() % classes.size()];
+            }
+            std::string prefix;
+            {
+                ASTNode &clsNode = ast.declarations[clsID];
+
+                // get inheritance class name
+                // unreachable
+                if (std::holds_alternative<int64_t>(clsNode.fields[1].val)) {
+                    // class don't have inheritance
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                prefix = std::get<std::string>(clsNode.fields[1].val) + ".";
             }
 
-            NodeID clsID = classes[rng() % classes.size()];
-            ASTNode &clsNode = ast.declarations[clsID];
+            const std::pair<const std::string, FuzzingAST::FunctionSignature>
+                *picked;
+            {
+                std::vector<
+                    const std::pair<const std::string, FunctionSignature> *>
+                    cands;
+                for (const auto &kv : ctx.builtinsFuncs)
+                    if (kv.first.starts_with(prefix)) // starts_with prefix
+                        cands.push_back(&kv);
 
-            // get inheritance class name
-            if (std::holds_alternative<int64_t>(clsNode.fields[1].val)) {
-                // class don't have inheritance
-                state = MutationState::STATE_REROLL;
-                break;
+                if (cands.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+
+                picked = cands[rng() % cands.size()];
             }
-            const std::string prefix =
-                std::get<std::string>(clsNode.fields[1].val) + ".";
-
-            std::vector<const std::pair<const std::string, FunctionSignature> *>
-                cands;
-            for (const auto &kv : ctx.builtinsFuncs)
-                if (kv.first.starts_with(prefix)) // starts_with prefix
-                    cands.push_back(&kv);
-
-            if (cands.empty()) {
-                state = MutationState::STATE_REROLL;
-                break;
-            }
-
-            const auto *picked = cands[rng() % cands.size()];
             const std::string &fullName = picked->first;
             const FunctionSignature &sig = picked->second;
             const std::string fnName =
@@ -168,7 +178,6 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             ScopeID funSid = ast.scopes.size();
 
             ast.declarations.reserve(funNodeID + 1 + sig.paramTypes.size());
-            ast.scopes.reserve(funSid + 1);
 
             ast.scopes.emplace_back(sid, sig.returnType);
 
@@ -177,9 +186,8 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 ASTNode &fun = ast.declarations[funNodeID];
                 fun.kind = ASTNodeKind::Function;
                 fun.scope = funSid;
-                fun.type = sig.returnType;
-                fun.fields.push_back({fnName});
-                fun.fields.push_back({sig.returnType});
+                fun.fields.emplace_back(fnName);
+                fun.fields.emplace_back(sig.returnType);
             }
 
             ast.declarations[clsID].fields.emplace_back(funNodeID);
@@ -188,13 +196,13 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 ASTScope &funScope = ast.scopes[funSid];
                 std::string arg = "arg_a";
                 for (TypeID pt : sig.paramTypes) {
-                    ast.declarations[funNodeID].fields.push_back({arg});
+                    ast.declarations[funNodeID].fields.emplace_back(arg);
 
                     funScope.variables.push_back(ast.declarations.size());
-                    ast.declarations.emplace_back(
+                    ast.declarations.push_back(
                         ASTNode{ASTNodeKind::DeclareVar, pt, {{arg}}});
                     bumpIdentifier(arg);
-                    ast.declarations[funNodeID].fields.push_back({pt});
+                    ast.declarations[funNodeID].fields.emplace_back(pt);
                 }
             }
             break;
@@ -205,37 +213,45 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             ASTNode cls;
             cls.kind = ASTNodeKind::Class;
 
-            cls.fields.push_back({ast.nameCnt});
+            cls.fields.emplace_back(ast.nameCnt);
             bumpIdentifier(ast.nameCnt);
 
             std::string inheritName;
             TypeID inheritType = -1;
             // pick a random type to inherit from
-            if (typesCnt > 0) {
-                TypeID tid = pickType(rng);
-                if (tid < scope.types.size()) {
-                    inheritType = tid + SCOPE_MAX_TYPE * (sid + 1);
-                    inheritName = scope.types[tid];
-                } else {
-                    tid -= scope.types.size();
-                    if (scope.parent != -1 && tid < parentScope.types.size()) {
-                        inheritType = (scope.parent + 1) * SCOPE_MAX_TYPE + tid;
-                        inheritName = parentScope.types[tid];
+            {
+                auto &scope = ast.scopes[sid];
+                const auto &parentScope =
+                    (parentScopeID != -1 ? ast.scopes[parentScopeID] : scope);
+                if (typesCnt > 0) {
+                    TypeID tid = pickType(rng);
+                    if (tid < scope.types.size()) {
+                        inheritType = tid + SCOPE_MAX_TYPE * (sid + 1);
+                        inheritName = scope.types[tid];
                     } else {
-                        tid -=
-                            (scope.parent != -1 ? parentScope.types.size() : 0);
-                        if (tid < ctx.types.size()) {
-                            inheritType = tid;
-                            inheritName = ctx.types[tid];
+                        tid -= scope.types.size();
+                        if (scope.parent != -1 &&
+                            tid < parentScope.types.size()) {
+                            inheritType =
+                                (scope.parent + 1) * SCOPE_MAX_TYPE + tid;
+                            inheritName = parentScope.types[tid];
+                        } else {
+                            tid -=
+                                (scope.parent != -1 ? parentScope.types.size()
+                                                    : 0);
+                            if (tid < ctx.types.size()) {
+                                inheritType = tid;
+                                inheritName = ctx.types[tid];
+                            }
                         }
                     }
+                    if (!inheritName.empty())
+                        cls.fields.push_back({inheritName});
                 }
-                if (!inheritName.empty())
-                    cls.fields.push_back({inheritName});
-            }
 
-            scope.types.push_back(std::get<std::string>(cls.fields[0].val));
-            scope.inheritedTypes.push_back(inheritType);
+                scope.types.push_back(std::get<std::string>(cls.fields[0].val));
+                scope.inheritedTypes.push_back(inheritType);
+            }
             // sentinel
             cls.fields.push_back({-1});
 
@@ -245,19 +261,22 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             if (!inheritName.empty() && ctx.builtinsFuncs.contains(initName)) {
                 NodeID funID = ast.declarations.size();
                 const ScopeID funSid = ast.scopes.size();
-                ASTNode fun;
-                fun.kind = ASTNodeKind::Function;
-                fun.scope = funSid;
-                TypeID retType =
-                    scope.types.size() - 1 + SCOPE_MAX_TYPE * (sid + 1);
-                ast.scopes.push_back({sid, retType});
-                fun.fields.push_back({"__init__"}); // <name>
-                fun.fields.push_back({-1});         // <ret‑type>
+                ast.declarations.emplace_back(); // index == funID
+                {
+                    ASTNode &fun = ast.declarations[funID];
+                    fun.kind = ASTNodeKind::Function;
+                    fun.scope = funSid;
+                    fun.fields.emplace_back("__init__");
+                    fun.fields.emplace_back(-1);
+                }
+
+                ast.scopes.emplace_back(sid, ast.scopes[sid].types.size() - 1 +
+                                                 SCOPE_MAX_TYPE * (sid + 1));
+
                 const auto &sig =
                     ctx.builtinsFuncs.at(initName); // get signature
                 auto &funScope = ast.scopes[funSid];
                 std::string arg = "arg_a";
-                ast.declarations.push_back(std::move(fun));
                 for (TypeID pt : sig.paramTypes) { // [param‑types ...]
                     auto &fun = ast.declarations[funID];
                     fun.fields.push_back({arg});
@@ -274,7 +293,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 //                      ".__init__"] = sig;
             }
 
-            scope.declarations.push_back(ast.declarations.size());
+            ast.scopes[sid].declarations.push_back(ast.declarations.size());
 
             ast.declarations.push_back(std::move(cls));
             break;
@@ -286,27 +305,33 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             var.fields = {{ast.nameCnt}, {}};
             bumpIdentifier(ast.nameCnt);
             TypeID tid = pickType(rng);
-            if (tid < scope.types.size()) {
-                var.type = scope.inheritedTypes[tid];
-                var.fields[1].val = scope.types[tid] + "()";
-            } else {
-                tid -= scope.types.size();
-                if (scope.parent != -1) {
-                    if (tid < parentScope.types.size()) {
-                        var.type = parentScope.inheritedTypes[tid];
-                        var.fields[1].val = parentScope.types[tid] + "()";
+            {
+                auto &scope = ast.scopes[sid];
+                const auto &parentScope =
+                    (parentScopeID != -1 ? ast.scopes[parentScopeID] : scope);
+
+                if (tid < scope.types.size()) {
+                    var.type = scope.inheritedTypes[tid];
+                    var.fields[1].val = scope.types[tid] + "()";
+                } else {
+                    tid -= scope.types.size();
+                    if (scope.parent != -1) {
+                        if (tid < parentScope.types.size()) {
+                            var.type = parentScope.inheritedTypes[tid];
+                            var.fields[1].val = parentScope.types[tid] + "()";
+                        } else {
+                            tid -= parentScope.types.size();
+                            var.type = tid;
+                            var.fields[1].val = ctx.types[tid] + "()";
+                        }
                     } else {
-                        tid -= parentScope.types.size();
                         var.type = tid;
                         var.fields[1].val = ctx.types[tid] + "()";
                     }
-                } else {
-                    var.type = tid;
-                    var.fields[1].val = ctx.types[tid] + "()";
                 }
+                scope.variables.push_back(varID);
+                scope.declarations.push_back(varID);
             }
-            scope.variables.push_back(varID);
-            scope.declarations.push_back(varID);
             ast.declarations.push_back(std::move(var));
             break;
         }

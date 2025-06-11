@@ -8,8 +8,8 @@ extern std::mt19937 rng;
 
 using namespace FuzzingAST;
 
-void BuiltinContext::update(const std::shared_ptr<ASTData> &ast) {
-    size_t n = ast->ast.scopes.size();
+void BuiltinContext::update(ASTData &ast) {
+    size_t n = ast.ast.scopes.size();
     index_.clear();
     index_.resize(n);
     typeList_.clear();
@@ -25,13 +25,13 @@ void BuiltinContext::update(const std::shared_ptr<ASTData> &ast) {
 
     for (size_t i = 0; i < n; ++i) {
         auto &map = index_[i];
-        int parent = ast->ast.scopes[i].parent;
+        int parent = ast.ast.scopes[i].parent;
         if (parent != -1) {
             map = index_[parent];
         }
-        const ASTScope &scope = ast->ast.scopes[i];
+        const ASTScope &scope = ast.ast.scopes[i];
         for (NodeID varID : scope.variables) {
-            const ASTNode &decl = ast->ast.declarations[varID];
+            const ASTNode &decl = ast.ast.declarations[varID];
             const std::string name = std::get<std::string>(decl.fields[0].val);
             map[decl.type].push_back(name);
             map[0].push_back(name);
@@ -59,7 +59,7 @@ void BuiltinContext::update(const std::shared_ptr<ASTData> &ast) {
         if (i == 0) {
             funcCnts_[0] = builtinsFuncsCnt;
         } else {
-            funcCnts_[i] = ast->ast.scopes[i].funcSignatures.size();
+            funcCnts_[i] = ast.ast.scopes[i].funcSignatures.size();
             if (parent != -1) {
                 funcCnts_[i] += funcCnts_[parent];
             }
@@ -70,24 +70,28 @@ void BuiltinContext::update(const std::shared_ptr<ASTData> &ast) {
 }
 
 const std::pair<const std::string, FunctionSignature> &
-BuiltinContext::pickRandomFunc(const std::shared_ptr<ASTData> &ast,
-                               ScopeID scopeID) {
+BuiltinContext::pickRandomFunc(const ASTData &ast, const ScopeID scopeID) {
     size_t idx = funcDist_[scopeID](rng);
-    auto &scope = ast->ast.scopes[scopeID];
-    if (idx < scope.funcSignatures.size()) {
-        auto it = scope.funcSignatures.begin();
-        std::advance(it, idx);
-        return *it;
-    }
-    idx -= scope.funcSignatures.size();
-    while (scope.parent != -1) {
-        scope = ast->ast.scopes[scope.parent];
+    ScopeID parentScopeID;
+    {
+        const auto &scope = ast.ast.scopes[scopeID];
         if (idx < scope.funcSignatures.size()) {
             auto it = scope.funcSignatures.begin();
             std::advance(it, idx);
             return *it;
         }
         idx -= scope.funcSignatures.size();
+        parentScopeID = ast.ast.scopes[scopeID].parent;
+    }
+    while (parentScopeID != -1) {
+        const auto &parentScope = ast.ast.scopes[parentScopeID];
+        parentScopeID = parentScope.parent;
+        if (idx < parentScope.funcSignatures.size()) {
+            auto it = parentScope.funcSignatures.begin();
+            std::advance(it, idx);
+            return *it;
+        }
+        idx -= parentScope.funcSignatures.size();
     }
     auto it = builtinsFuncs.begin();
     std::advance(it, idx);
