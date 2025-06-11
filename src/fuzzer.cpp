@@ -28,8 +28,7 @@ uint32_t corpusSize = 0;
 
 std::mt19937 rng(std::random_device{}());
 
-int testOneInput(const std::shared_ptr<ASTData> &data,
-                BuiltinContext &ctx) {
+int testOneInput(const std::shared_ptr<ASTData> &data, BuiltinContext &ctx) {
     data_backup = nlohmann::json(data->ast).dump();
     return runAST(data->ast, ctx);
 }
@@ -103,7 +102,7 @@ void FuzzingAST::fuzzerDriver() {
         }
     }
     corpusSize = scheduler.corpus.size();
-    scheduler.ctx.picker.update(scheduler.corpus[scheduler.idx]);
+    scheduler.ctx.update(scheduler.corpus[scheduler.idx]);
     newEdgeCnt = 0; // reset edge count
     cacheCorpus.reserve(MAX_CACHE_SIZE);
     TUI::initTUI();
@@ -154,8 +153,7 @@ void FuzzingAST::fuzzerDriver() {
         case MutationPhase::DeclarationMutation: {
             newEdgeCnt = 0; // reset edge count for declaration change
             // continue mutating on current
-            std::shared_ptr<ASTData> newData =
-                std::make_shared<ASTData>(*scheduler.corpus[scheduler.idx]);
+            std::shared_ptr<ASTData> newData = scheduler.corpus[scheduler.idx];
             mutate_declaration(newData, scheduler.ctx);
             scheduler.update(0, newData->ast.declarations.size());
             scheduler.corpus.emplace_back(newData);

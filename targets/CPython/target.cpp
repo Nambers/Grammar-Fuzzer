@@ -126,16 +126,19 @@ int FuzzingAST::initialize(int *argc, char ***argv) {
 int FuzzingAST::finalize() { return Py_FinalizeEx(); }
 
 void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
-    FILE *file = fopen("./targets/CPython/builtins.json", "r");
-    if (!file) {
+    std::ifstream in("./targets/CPython/builtins.json");
+    if (!in) {
         PANIC("Failed to open builtins.json, run build.sh to generate it.");
     }
-    nlohmann::json j = nlohmann::json::parse(file);
+    nlohmann::json j;
+    in >> j;
     auto tmp =
         j["funcs"].get<std::unordered_map<std::string, FunctionSignature>>();
     ctx.builtinsFuncs.swap(tmp);
+    ctx.builtinsFuncsCnt = ctx.builtinsFuncs.size();
     auto tmp2 = j["types"].get<std::vector<std::string>>();
     ctx.types.swap(tmp2);
+    ctx.builtinTypesCnt = ctx.types.size();
     auto tmp3 = j["ops"].get<std::vector<std::vector<std::vector<TypeID>>>>();
     ctx.ops.swap(tmp3);
     auto tmp4 = j["uops"].get<std::vector<std::vector<TypeID>>>();
@@ -186,7 +189,7 @@ static TypeID resolveType(const std::string &name, const BuiltinContext &ctx,
     return 0; // fallback to "object"
 }
 
-static inline void errorCallback(PyObjectPtr &exc, const AST &ast,
+static inline void errorCallback(const PyObjectPtr &exc, const AST &ast,
                                  BuiltinContext &ctx) {
     PyObjectPtr errVal(PyObject_Str(exc.get()));
     std::string errMsg(PyUnicode_AsUTF8(errVal.get()));
@@ -244,8 +247,9 @@ static inline void errorCallback(PyObjectPtr &exc, const AST &ast,
     }
 }
 
-static int runInternal(const AST &ast, BuiltinContext &ctx, PyObject *code,
-                       bool readResult = false, std::string *outStr = nullptr,
+static int runInternal(const AST &ast, BuiltinContext &ctx,
+                       const PyObjectPtr &code, bool readResult = false,
+                       std::string *outStr = nullptr,
                        uint32_t timeoutMs = 500) {
     if (sigsetjmp(timeoutJmp, 1) == 0) {
         PyObjectPtr dict(PyDict_New());
@@ -253,7 +257,8 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObject *code,
         PyDict_SetItemString(dict.get(), "__name__", name.get());
         PyDict_SetItemString(dict.get(), "__builtins__", PyEval_GetBuiltins());
         if (readResult) {
-            PyObjectPtr result(PyEval_EvalCode(code, dict.get(), dict.get()));
+            PyObjectPtr result(
+                PyEval_EvalCode(code.get(), dict.get(), dict.get()));
             if (!result) {
                 if (PyErr_Occurred()) {
                     PyObjectPtr exc(PyErr_GetRaisedException());
@@ -266,11 +271,10 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObject *code,
                 PyEval_EvalCode(driverPyCodeObj, dict.get(), dict.get()));
             if (!result) {
                 if (PyErr_Occurred()) {
-#ifndef DISABLE_DEBUG_OUTPUT
-                    PyErr_Print();
-#endif
-                    PyErr_Clear();
-                    PANIC("Failed to run driver.py");
+                    PyObjectPtr exc(PyErr_GetRaisedException());
+                    PyObjectPtr errVal(PyObject_Str(exc.get()));
+                    std::string errMsg(PyUnicode_AsUTF8(errVal.get()));
+                    PANIC("Failed to run driver.py {}", errMsg);
                 }
             }
             // a borrowed ptr, no need to DECREF
@@ -288,7 +292,8 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObject *code,
 
         } else {
             set_timeout_ms(timeoutMs);
-            PyObjectPtr result(PyEval_EvalCode(code, dict.get(), dict.get()));
+            PyObjectPtr result(
+                PyEval_EvalCode(code.get(), dict.get(), dict.get()));
             clear_timeout(); // cancel timeout
 
             if (!result) {
@@ -305,6 +310,7 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObject *code,
     } else {
         clear_timeout();
         // PyErr_SetString(PyExc_RuntimeError, "Execution timed out");
+        // restart Python interpreter
         finalize();
 
         initialize(nullptr, nullptr);
@@ -312,27 +318,43 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObject *code,
     }
 }
 
-int FuzzingAST::runAST(const AST &ast, BuiltinContext &ctx, bool echo) {
-    std::ostringstream script;
-    scopeToPython(script, 0, ast, ctx, 0);
-    std::string re = script.str();
-
+static inline int runASTStr(const std::string &re, const AST &ast,
+                            BuiltinContext &ctx, bool echo) {
     if (echo) {
         std::cout << "[Generated Python]:\n" << re << "\n";
     }
 
-    PyObject *code = Py_CompileString(re.c_str(), "<ast>", Py_file_input);
+    PyObjectPtr code(Py_CompileString(re.c_str(), "<ast>", Py_file_input));
     if (PyErr_Occurred()) {
-#ifndef DISABLE_DEBUG_OUTPUT
-        PyErr_Print();
-#endif
+        PyObjectPtr exc(PyErr_GetRaisedException());
+        errorCallback(exc, ast, ctx);
         PyErr_Clear();
         return -1;
     }
 
-    auto ret = runInternal(ast, ctx, code);
-    Py_DECREF(code);
-    return ret;
+    return runInternal(ast, ctx, code);
+}
+
+int FuzzingAST::runLine(const ASTNode &node, const AST &ast,
+                        BuiltinContext &ctx, bool echo) {
+    std::ostringstream script;
+    nodeToPython(script, node, ast, ctx, 0);
+    return runASTStr(script.str(), ast, ctx, echo);
+}
+
+int FuzzingAST::runLines(const std::vector<ASTNode> &nodes, const AST &ast,
+                         BuiltinContext &ctx, bool echo) {
+    std::ostringstream script;
+    for (const auto &node : nodes) {
+        nodeToPython(script, node, ast, ctx, 0);
+    }
+    return runASTStr(script.str(), ast, ctx, echo);
+}
+
+int FuzzingAST::runAST(const AST &ast, BuiltinContext &ctx, bool echo) {
+    std::ostringstream script;
+    scopeToPython(script, 0, ast, ctx, 0);
+    return runASTStr(script.str(), ast, ctx, echo);
 }
 
 int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
@@ -354,7 +376,7 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
 
     std::string re = script.str();
 
-    PyObject *code = Py_CompileString(re.c_str(), "<ast>", Py_file_input);
+    PyObjectPtr code(Py_CompileString(re.c_str(), "<ast>", Py_file_input));
     if (PyErr_Occurred()) {
 #ifndef DISABLE_DEBUG_OUTPUT
         PyErr_Print();
@@ -366,7 +388,6 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
 
     std::string jsonStr;
     int ret = runInternal(ast, ctx, code, true, &jsonStr);
-    Py_DECREF(code);
     if (ret != 0)
         return ret;
     nlohmann::json j = nlohmann::json::parse(jsonStr);

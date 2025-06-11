@@ -7,6 +7,10 @@
 
 namespace FuzzingAST {
 int runAST(const AST &, BuiltinContext &, bool echo = false);
+int runLines(const std::vector<ASTNode> &nodes, const AST &,
+             BuiltinContext &ctx, bool echo = false);
+int runLine(const ASTNode &node, const AST &, BuiltinContext &ctx,
+            bool echo = false);
 int initialize(int *, char ***);
 int finalize();
 void loadBuiltinsFuncs(BuiltinContext &ctx);

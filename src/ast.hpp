@@ -21,16 +21,16 @@ constexpr std::array BINARY_OPS{"+",  "-",  "*",  "/", "%",  "**",
 constexpr std::array UNARY_OPS{"-", "not", "~"};
 
 enum class ASTNodeKind {
-    Function = 0,   // def f(x):
-    Class,          // class A:
-    DeclareVar,     // var a = ...
-    Import,         // import x
-                    // ---
-    Assign,         // x = y
-    Call,           // f(x)
-    Return,         // return x
-    BinaryOp,       // x + y
-    UnaryOp,        // -x
+    Function = 0, // def f(x):
+    Class,        // class A:
+    DeclareVar,   // var a = ...
+    Import,       // import x
+                  // ---
+    Assign,       // x = y
+    Call,         // f(x)
+    Return,       // return x
+    BinaryOp,     // x + y
+    UnaryOp,      // -x
     // ---
     Custom,
 };
@@ -48,7 +48,19 @@ class FunctionSignature {
 
 class ASTData; // forward declaration
 
-class VariablePicker {
+class BuiltinContext {
+  public:
+    std::unordered_map<std::string, FunctionSignature> builtinsFuncs = {};
+    size_t builtinsFuncsCnt = 0;
+    std::vector<std::string> types = {};
+    size_t builtinTypesCnt = 0;
+    std::vector<std::vector<std::vector<TypeID>>> ops = {};
+    std::vector<std::vector<TypeID>> unaryOps = {};
+    TypeID strID = -1;
+    TypeID intID = -1;
+    TypeID floatID = -1;
+    TypeID boolID = -1;
+    // --- variable provider ---
   public:
     // Build index for all scopes, merging parent scope and initializing
     // distributions
@@ -66,31 +78,24 @@ class VariablePicker {
     std::string pickRandomVar(ScopeID scopeID,
                               const std::vector<TypeID> &types);
 
+    const std::pair<const std::string, FunctionSignature> &
+    pickRandomFunc(const std::shared_ptr<ASTData> &ast, ScopeID scopeID);
+
   private:
     std::vector<std::unordered_map<TypeID, std::vector<std::string>>>
-        index_; // one map per scope, includes inherited variables
+        index_; // one map per scope,
+                // includes inherited
+                // variables
 
-    // For uniform distribution over types
     std::vector<std::vector<TypeID>> typeList_;
     std::vector<std::uniform_int_distribution<size_t>> typeDist_;
 
-    // For uniform distribution over variables of a given type
     std::vector<
         std::unordered_map<TypeID, std::uniform_int_distribution<size_t>>>
         varDist_;
-};
 
-class BuiltinContext {
-  public:
-    std::unordered_map<std::string, FunctionSignature> builtinsFuncs = {};
-    std::vector<std::string> types = {};
-    std::vector<std::vector<std::vector<TypeID>>> ops = {};
-    std::vector<std::vector<TypeID>> unaryOps = {};
-    TypeID strID = -1;
-    TypeID intID = -1;
-    TypeID floatID = -1;
-    TypeID boolID = -1;
-    VariablePicker picker;
+    std::vector<std::uniform_int_distribution<size_t>> funcDist_;
+    std::vector<size_t> funcCnts_;
 };
 
 class ASTNodeValue {

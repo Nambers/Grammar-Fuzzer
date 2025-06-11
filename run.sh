@@ -15,21 +15,32 @@ cleanup() {
 
     echo "[run.sh] Killing fuzzer (PID=$FUZZ_PID)..."
     kill -s SIGINT "$FUZZ_PID" 2>/dev/null || true
-    wait "$FUZZ_PID" 2>/dev/null || true
+    wait "$FUZZ_PID"
 
-    echo "[run.sh] Waiting 1s before killing cov..."
-    sleep 1
-
-    echo "[run.sh] Killing cov (PID=$COV_PID)..."
+    # Try graceful shutdown of cov
     kill -s SIGINT "$COV_PID" 2>/dev/null || true
-    wait "$COV_PID" 2>/dev/null || true
 
-    echo "[run.sh] Clean exit."
+    # Wait up to 3s for cov to exit cleanly
+    for i in {1..30}; do
+        if ! kill -0 "$COV_PID" 2>/dev/null; then
+            break # exited
+        fi
+        sleep 0.1
+    done
+
+    # Force kill if still alive
+    if kill -0 "$COV_PID" 2>/dev/null; then
+        echo "[run.sh] Force killing cov (PID=$COV_PID)..."
+        kill -9 "$COV_PID" 2>/dev/null || true
+        wait "$COV_PID" 2>/dev/null || true
+    fi
+
+    echo "[run.sh] Fuzzer finished, cov cleaned up."
     exit 0
 }
 trap cleanup SIGINT
 
-export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0;
+export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0
 
 LLVM_PROFILE_FILE="default_%p.profraw" $BUILD_COV_PATH/targets/CPython/CPythonCov &
 COV_PID=$!
@@ -39,7 +50,23 @@ $BUILD_PATH/pyFuzzer -load-saved &
 FUZZ_PID=$!
 
 wait "$FUZZ_PID"
-kill "$COV_PID" 2>/dev/null || true
-wait "$COV_PID" 2>/dev/null || true
+
+# Try graceful shutdown of cov
+kill -s SIGINT "$COV_PID" 2>/dev/null || true
+
+# Wait up to 3s for cov to exit cleanly
+for i in {1..30}; do
+    if ! kill -0 "$COV_PID" 2>/dev/null; then
+        break # exited
+    fi
+    sleep 0.1
+done
+
+# Force kill if still alive
+if kill -0 "$COV_PID" 2>/dev/null; then
+    echo "[run.sh] Force killing cov (PID=$COV_PID)..."
+    kill -9 "$COV_PID" 2>/dev/null || true
+    wait "$COV_PID" 2>/dev/null || true
+fi
 
 echo "[run.sh] Fuzzer finished, cov cleaned up."
