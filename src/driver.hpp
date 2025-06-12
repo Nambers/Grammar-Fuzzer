@@ -3,18 +3,25 @@
 
 #include "FuzzSchedulerState.hpp"
 #include "ast.hpp"
+#include <memory>
+#include <unordered_set>
 
 namespace FuzzingAST {
-int runAST(const AST &, BuiltinContext &, bool echo = false);
+int runAST(const AST &, BuiltinContext &,
+           std::unique_ptr<ExecutionContext> &excCtx, bool echo = false);
 int runLines(const std::vector<ASTNode> &nodes, const AST &,
-             BuiltinContext &ctx, bool echo = false);
+             BuiltinContext &ctx, std::unique_ptr<ExecutionContext> &excCtx,
+             bool echo = false);
 int runLine(const ASTNode &node, const AST &, BuiltinContext &ctx,
-            bool echo = false);
+            std::unique_ptr<ExecutionContext> &excCtx, bool echo = false);
 int initialize(int *, char ***);
 int finalize();
 void loadBuiltinsFuncs(BuiltinContext &ctx);
-int reflectObject(const AST &ast, ASTScope &scope, BuiltinContext &ctx);
+int reflectObject(const AST &ast, ASTScope &scope, const ScopeID sid, BuiltinContext &ctx);
 void dummyAST(ASTData &data, const BuiltinContext &scheduler);
+std::unique_ptr<ExecutionContext> getInitExecutionContext();
+void updateTypes(const std::unordered_set<std::string> &globalVars, ASTData &ast,
+                 BuiltinContext &ctx, std::unique_ptr<ExecutionContext> &excCtx);
 } // namespace FuzzingAST
 
 #endif // DRIVER_HPP

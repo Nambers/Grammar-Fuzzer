@@ -32,13 +32,12 @@ void BuiltinContext::update(ASTData &ast) {
         const ASTScope &scope = ast.ast.scopes[i];
         for (NodeID varID : scope.variables) {
             const ASTNode &decl = ast.ast.declarations[varID];
-            const std::string name = std::get<std::string>(decl.fields[0].val);
+            const std::string &name = std::get<std::string>(decl.fields[0].val);
             map[decl.type].push_back(name);
             map[0].push_back(name);
         }
 
         auto &types = typeList_[i];
-        types.clear();
         for (auto &p : map) {
             if (!p.second.empty())
                 types.push_back(p.first);
@@ -99,14 +98,14 @@ BuiltinContext::pickRandomFunc(const ASTData &ast, const ScopeID scopeID) {
 }
 
 TypeID BuiltinContext::pickRandomType(ScopeID scopeID) {
-    const auto &types = typeList_.at(scopeID);
+    const auto &types = typeList_[scopeID];
     if (types.empty())
         return 0;
     return types[typeDist_[scopeID](rng)];
 }
 
 std::string BuiltinContext::pickRandomVar(ScopeID scopeID, TypeID type) {
-    const auto &map = index_.at(scopeID);
+    const auto &map = index_[scopeID];
     auto it = map.find(type);
     const auto *slice =
         (it != map.end() && !it->second.empty()) ? &it->second : nullptr;

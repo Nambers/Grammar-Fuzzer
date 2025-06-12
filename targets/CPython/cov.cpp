@@ -1,6 +1,5 @@
 #include "ast.hpp"
 #include "dumper.hpp"
-#include "log.hpp"
 #include "serialization.hpp"
 #include <Python.h>
 #include <chrono>
@@ -20,6 +19,17 @@ static std::atomic<bool> shouldExit = false;
 static BuiltinContext ctx;
 static const fs::path queueDir = "corpus/queue";
 static const fs::path doneDir = "corpus/done";
+
+inline constexpr const char *RED = "\033[0;31m";
+inline constexpr const char *RESET = "\033[0m";
+
+template <typename... Args>
+[[noreturn]] void __attribute__((noreturn))
+PANIC(std::format_string<Args...> fmt, Args &&...args) {
+    std::cerr << RED << std::format(fmt, std::forward<Args>(args)...) << RESET
+              << std::endl;
+    abort();
+}
 
 static std::string readFile(const fs::path &path) {
     std::ifstream in(path);

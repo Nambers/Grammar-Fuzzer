@@ -1,3 +1,4 @@
+#include "target.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "dumper.hpp"
@@ -20,12 +21,6 @@
 #include <unistd.h>
 
 using namespace FuzzingAST;
-
-struct PyObjectDeleter {
-    void operator()(PyObject *obj) const { Py_XDECREF(obj); }
-};
-
-using PyObjectPtr = std::unique_ptr<PyObject, PyObjectDeleter>;
 
 extern uint32_t newEdgeCnt;
 extern uint32_t errCnt;
@@ -174,21 +169,32 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
     data.ast.scopes[0].variables[3] = 3;
 }
 
-static TypeID resolveType(const std::string &name, const BuiltinContext &ctx,
-                          const ASTScope &scope) {
-    auto it = std::find(ctx.types.begin(), ctx.types.end(), name);
-    if (it != ctx.types.end())
-        return static_cast<TypeID>(std::distance(ctx.types.begin(), it));
+static TypeID resolveType(const std::string &fullname,
+                          const BuiltinContext &ctx, const ASTScope &scope,
+                          ScopeID sid) {
+    auto matches = [&](const std::string &t) {
+        if (fullname == t)
+            return true;
+        if (t.size() > fullname.size())
+            return t.ends_with(fullname);
 
-    auto it2 = std::find(scope.types.begin(), scope.types.end(), name);
-    if (it2 != scope.types.end())
-        return static_cast<TypeID>(ctx.types.size() +
-                                   std::distance(scope.types.begin(), it2));
+        return false;
+    };
 
-    return 0; // fallback to "object"
+    for (size_t i = 0; i < ctx.types.size(); ++i) {
+        if (matches(ctx.types[i])) {
+            return i;
+        }
+    }
+    for (size_t j = 0; j < scope.types.size(); ++j) {
+        if (matches(scope.types[j])) {
+            return j + (sid + 1) * SCOPE_MAX_TYPE;
+        }
+    }
+    return 0; // object
 }
 
-static inline void errorCallback(const PyObjectPtr &exc, const AST &ast,
+static void errorCallback(const PyObjectPtr &exc, const AST &ast,
                                  BuiltinContext &ctx) {
     PyObjectPtr errVal(PyObject_Str(exc.get()));
     std::string errMsg(PyUnicode_AsUTF8(errVal.get()));
@@ -247,17 +253,12 @@ static inline void errorCallback(const PyObjectPtr &exc, const AST &ast,
 }
 
 static int runInternal(const AST &ast, BuiltinContext &ctx,
-                       const PyObjectPtr &code, bool readResult = false,
-                       std::string *outStr = nullptr,
+                       const PyObjectPtr &code, PyObject *dict,
+                       bool readResult = false, std::string *outStr = nullptr,
                        uint32_t timeoutMs = 500) {
     if (sigsetjmp(timeoutJmp, 1) == 0) {
-        PyObjectPtr dict(PyDict_New());
-        PyObjectPtr name(PyUnicode_FromString("__main__"));
-        PyDict_SetItemString(dict.get(), "__name__", name.get());
-        PyDict_SetItemString(dict.get(), "__builtins__", PyEval_GetBuiltins());
         if (readResult) {
-            PyObjectPtr result(
-                PyEval_EvalCode(code.get(), dict.get(), dict.get()));
+            PyObjectPtr result(PyEval_EvalCode(code.get(), dict, dict));
             if (!result) {
                 if (PyErr_Occurred()) {
                     PyObjectPtr exc(PyErr_GetRaisedException());
@@ -266,8 +267,7 @@ static int runInternal(const AST &ast, BuiltinContext &ctx,
                     return -1;
                 }
             }
-            result.reset(
-                PyEval_EvalCode(driverPyCodeObj, dict.get(), dict.get()));
+            result.reset(PyEval_EvalCode(driverPyCodeObj, dict, dict));
             if (!result) {
                 if (PyErr_Occurred()) {
                     PyObjectPtr exc(PyErr_GetRaisedException());
@@ -277,7 +277,7 @@ static int runInternal(const AST &ast, BuiltinContext &ctx,
                 }
             }
             // a borrowed ptr, no need to DECREF
-            PyObject *rawJson = PyDict_GetItemString(dict.get(), "result");
+            PyObject *rawJson = PyDict_GetItemString(dict, "result");
             if (!rawJson) {
                 PyErr_Print();
                 PANIC("Failed to get 'result' from driver.py");
@@ -291,8 +291,7 @@ static int runInternal(const AST &ast, BuiltinContext &ctx,
 
         } else {
             set_timeout_ms(timeoutMs);
-            PyObjectPtr result(
-                PyEval_EvalCode(code.get(), dict.get(), dict.get()));
+            PyObjectPtr result(PyEval_EvalCode(code.get(), dict, dict));
             clear_timeout(); // cancel timeout
 
             if (!result) {
@@ -318,7 +317,8 @@ static int runInternal(const AST &ast, BuiltinContext &ctx,
 }
 
 static inline int runASTStr(const std::string &re, const AST &ast,
-                            BuiltinContext &ctx, bool echo) {
+                            BuiltinContext &ctx, PyObject *dict, bool echo,
+                            uint32_t timeoutMs = 500) {
     if (echo) {
         std::cout << "[Generated Python]:\n" << re << "\n";
     }
@@ -331,33 +331,48 @@ static inline int runASTStr(const std::string &re, const AST &ast,
         return -1;
     }
 
-    return runInternal(ast, ctx, code);
+    return runInternal(ast, ctx, code, dict, false, nullptr, timeoutMs);
 }
 
 int FuzzingAST::runLine(const ASTNode &node, const AST &ast,
-                        BuiltinContext &ctx, bool echo) {
+                        BuiltinContext &ctx,
+                        std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
     std::ostringstream script;
     nodeToPython(script, node, ast, ctx, 0);
-    return runASTStr(script.str(), ast, ctx, echo);
+    return runASTStr(script.str(), ast, ctx,
+                     reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
+                     echo);
 }
 
 int FuzzingAST::runLines(const std::vector<ASTNode> &nodes, const AST &ast,
-                         BuiltinContext &ctx, bool echo) {
+                         BuiltinContext &ctx,
+                         std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
     std::ostringstream script;
+    for (auto nodeID : ast.scopes[0].declarations) {
+        const auto &node = ast.declarations[nodeID];
+        if (node.kind != ASTNodeKind::Function) {
+            nodeToPython(script, node, ast, ctx, 0);
+        }
+    }
     for (const auto &node : nodes) {
         nodeToPython(script, node, ast, ctx, 0);
     }
-    return runASTStr(script.str(), ast, ctx, echo);
+    return runASTStr(script.str(), ast, ctx,
+                     reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
+                     echo, 2000);
 }
 
-int FuzzingAST::runAST(const AST &ast, BuiltinContext &ctx, bool echo) {
+int FuzzingAST::runAST(const AST &ast, BuiltinContext &ctx,
+                       std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
     std::ostringstream script;
     scopeToPython(script, 0, ast, ctx, 0);
-    return runASTStr(script.str(), ast, ctx, echo);
+    return runASTStr(script.str(), ast, ctx,
+                     reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
+                     echo);
 }
 
 int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
-                              BuiltinContext &ctx) {
+                              const ScopeID sid, BuiltinContext &ctx) {
     std::ostringstream script;
 
     bool empty = true;
@@ -386,7 +401,11 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     }
 
     std::string jsonStr;
-    int ret = runInternal(ast, ctx, code, true, &jsonStr);
+    auto excCtx = getInitExecutionContext();
+    int ret =
+        runInternal(ast, ctx, code,
+                    reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
+                    true, &jsonStr);
     if (ret != 0)
         return ret;
     nlohmann::json j = nlohmann::json::parse(jsonStr);
@@ -394,16 +413,17 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
 
     for (auto &[_name, sig] : funcs.items()) {
         for (auto &typeName : sig["paramTypes"]) {
-            typeName = resolveType(typeName.get<std::string>(), ctx, scope);
+            typeName =
+                resolveType(typeName.get<std::string>(), ctx, scope, sid);
         }
 
         if (sig.contains("returnType"))
-            sig["returnType"] =
-                resolveType(sig["returnType"].get<std::string>(), ctx, scope);
+            sig["returnType"] = resolveType(
+                sig["returnType"].get<std::string>(), ctx, scope, sid);
 
         if (sig.contains("selfType") && !sig["selfType"].is_null())
-            sig["selfType"] =
-                resolveType(sig["selfType"].get<std::string>(), ctx, scope);
+            sig["selfType"] = resolveType(sig["selfType"].get<std::string>(),
+                                          ctx, scope, sid);
         else
             sig["selfType"] = -1;
     }
@@ -415,4 +435,45 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     // auto tmp2 = j["types"].get<std::vector<std::string>>();
     // scope.types.swap(tmp2);
     return 0;
+}
+
+std::unique_ptr<ExecutionContext> FuzzingAST::getInitExecutionContext() {
+    PyObjectPtr dict(PyDict_New());
+    PyObjectPtr name(PyUnicode_FromString("__main__"));
+    PyDict_SetItemString(dict.get(), "__name__", name.get());
+    PyDict_SetItemString(dict.get(), "__builtins__", PyEval_GetBuiltins());
+    return std::make_unique<PythonExecutionContext>(std::move(dict));
+}
+
+void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
+                             ASTData &ast, BuiltinContext &ctx,
+                             std::unique_ptr<ExecutionContext> &excCtx) {
+    PyObject *dict = reinterpret_cast<PyObject *>(excCtx.get()->getContext());
+    // retrieve variable then get type str then match
+    for (const auto &varName : globalVars) {
+        PyObject *var = PyDict_GetItemString(dict, varName.c_str());
+        if (!var) {
+            ERROR("Variable '{}' not found in execution context", varName);
+            continue;
+        }
+        if (!PyUnicode_Check(var)) {
+            ERROR("Variable '{}' is not a string", varName);
+            continue;
+        }
+        std::string typeStr(Py_TYPE(var)->tp_name);
+        TypeID typeID = resolveType(typeStr, ctx, ast.ast.scopes[0], 0);
+        if (typeID == 0) {
+            WARN("Failed to resolve type '{}' for variable '{}'", typeStr,
+                 varName);
+        }
+        // update type
+        for (NodeID declID : ast.ast.scopes[0].declarations) {
+            const auto &decl = ast.ast.declarations[declID];
+            if (decl.kind == ASTNodeKind::DeclareVar &&
+                std::get<std::string>(decl.fields[0].val) == varName) {
+                ast.ast.declarations[declID].type = typeID;
+                continue;
+            }
+        }
+    }
 }

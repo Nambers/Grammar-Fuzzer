@@ -10,10 +10,10 @@ namespace FuzzingAST {
 class FuzzSchedulerState;
 
 namespace TUI {
+void update(const FuzzSchedulerState &state, size_t currentASTSize);
 void initTUI();
 void finalizeTUI();
-void writeTUI(const FuzzSchedulerState &state,
-              size_t currentASTSize);
+void writeTUI(const FuzzSchedulerState &state, size_t currentASTSize);
 } // namespace TUI
 } // namespace FuzzingAST
 #endif // UI_HPP

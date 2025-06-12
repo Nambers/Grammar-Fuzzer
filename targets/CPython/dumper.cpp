@@ -160,15 +160,15 @@ void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
     bool empty = true;
 
     for (NodeID id : scope.declarations) {
-        const auto &decl = ast.declarations.at(id);
+        const auto &decl = ast.declarations[id];
         // all function are under class, which will be rendered in class handler
         if (decl.kind != ASTNodeKind::Function) {
-            nodeToPython(out, ast.declarations.at(id), ast, ctx, indentLevel);
+            nodeToPython(out, ast.declarations[id], ast, ctx, indentLevel);
             empty = false;
         }
     }
     for (NodeID id : scope.expressions) {
-        nodeToPython(out, ast.expressions.at(id), ast, ctx, indentLevel);
+        nodeToPython(out, ast.expressions[id], ast, ctx, indentLevel);
         empty = false;
     }
 

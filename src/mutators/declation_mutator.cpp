@@ -279,14 +279,14 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 std::string arg = "arg_a";
                 for (TypeID pt : sig.paramTypes) { // [param‑types ...]
                     auto &fun = ast.declarations[funID];
-                    fun.fields.push_back({arg});
+                    fun.fields.emplace_back(arg);
                     funScope.variables.push_back(ast.declarations.size());
                     ast.declarations.push_back(
                         ASTNode{ASTNodeKind::DeclareVar, pt, {{arg}}});
                     bumpIdentifier(arg);
-                    fun.fields.push_back({pt});
+                    fun.fields.emplace_back(pt);
                 }
-                cls.fields.push_back({funID}); // push back as member function
+                cls.fields.emplace_back(funID); // push back as member function
                 // will be added in reflectObject
                 // scope.funcSignatures[std::get<std::string>(cls.fields[0].val)
                 // +

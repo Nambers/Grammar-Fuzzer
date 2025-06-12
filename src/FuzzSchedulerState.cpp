@@ -5,25 +5,17 @@
 
 using namespace FuzzingAST;
 
-constexpr int TUI_FREQ = 4;
-
 extern uint32_t newEdgeCnt;
 
 void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
                                             size_t currentAstSize) {
-    static int tuiCounter = 0;
-    if (++tuiCounter % TUI_FREQ == 0)
-        TUI::writeTUI(*this, currentAstSize);
     if (gotNewEdge) {
-        noEdgeCount = 0;
         execStallCount = 0;
-        return;
     }
 
     // update strategy based on the current phase
     switch (phase) {
     case MutationPhase::ExecutionGeneration:
-        ++noEdgeCount;
         if (noEdgeCount > execFailureThreshold()) {
             noEdgeCount = 0;
             if (++execStallCount == maxDeclFailures) {

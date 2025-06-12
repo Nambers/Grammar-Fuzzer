@@ -38,6 +38,10 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                 break;
             }
             auto v2 = ctx.pickRandomVar(scopeID, t);
+            if (v1 == v2) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
             curr.fields = {{v1}, {v2}};
             globalVars.insert(v1);
             break;

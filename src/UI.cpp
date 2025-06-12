@@ -125,6 +125,15 @@ static LineBuf stderr_linebuf(stderr_buffer);
 static std::streambuf *old_cout = nullptr;
 static std::streambuf *old_cerr = nullptr;
 static std::chrono::steady_clock::time_point start_time;
+static constexpr int TUI_FREQ = 10;
+static bool tuiEnabled = false;
+
+void FuzzingAST::TUI::update(const FuzzingAST::FuzzSchedulerState &state,
+                             size_t currentASTSize) {
+    static int tuiCounter = 0;
+    if (++tuiCounter % TUI_FREQ == 0)
+        TUI::writeTUI(state, currentASTSize);
+}
 
 void FuzzingAST::TUI::initTUI() {
     old_cout = std::cout.rdbuf();
@@ -135,11 +144,15 @@ void FuzzingAST::TUI::initTUI() {
     // std::cout << "\x1b[3J\x1b[H\x1b[2J" << std::flush;
     // Screen::Create(Dimension::Full(), Dimension::Full()).Clear();
     start_time = std::chrono::steady_clock::now();
+    tuiEnabled = true;
 }
 
 void FuzzingAST::TUI::finalizeTUI() {
-    std::cout.rdbuf(old_cout);
-    std::cerr.rdbuf(old_cerr);
+    if (tuiEnabled) {
+        tuiEnabled = false;
+        std::cout.rdbuf(old_cout);
+        std::cerr.rdbuf(old_cerr);
+    }
 }
 
 void FuzzingAST::TUI::writeTUI(const FuzzingAST::FuzzSchedulerState &state,

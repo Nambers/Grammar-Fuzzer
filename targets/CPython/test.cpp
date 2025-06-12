@@ -4,10 +4,20 @@
 #include <Python.h>
 #include <fstream>
 #include <iostream>
-#include "log.hpp"
 
 using json = nlohmann::json;
 using namespace FuzzingAST;
+
+inline constexpr const char *RED = "\033[0;31m";
+inline constexpr const char *RESET = "\033[0m";
+
+template <typename... Args>
+[[noreturn]] void __attribute__((noreturn))
+PANIC(std::format_string<Args...> fmt, Args &&...args) {
+    std::cerr << RED << std::format(fmt, std::forward<Args>(args)...) << RESET
+              << std::endl;
+    abort();
+}
 
 static void runASTStr(const std::string &re) {
     PyObject *code = Py_CompileString(re.c_str(), "<ast>", Py_file_input);

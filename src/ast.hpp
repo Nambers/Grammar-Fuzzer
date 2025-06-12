@@ -148,6 +148,12 @@ class ASTData {
     AST ast;
 };
 
+class ExecutionContext {
+  public:
+    virtual ~ExecutionContext() = default;
+    virtual void *getContext() = 0;
+};
+
 const std::string &getTypeName(TypeID tid, const AST &scope,
                                const BuiltinContext &ctx);
 void initPrimitiveTypes(BuiltinContext &ctx);

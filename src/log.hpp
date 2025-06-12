@@ -1,6 +1,7 @@
 #ifndef LOGH
 #define LOGH
 
+#include "UI.hpp"
 #include <format>
 #include <iostream>
 #include <signal.h>
@@ -8,6 +9,7 @@
 #define INFO Log::info
 #define ERROR Log::error
 #define PANIC Log::panic
+#define WARN Log::warn
 
 namespace Log {
 
@@ -29,6 +31,11 @@ void info(std::format_string<Args...> fmt, Args &&...args) {
 }
 
 template <typename... Args>
+void warn(std::format_string<Args...> fmt, Args &&...args) {
+    std::cerr << std::format(fmt, std::forward<Args>(args)...) << std::endl;
+}
+
+template <typename... Args>
 void error(std::format_string<Args...> fmt, Args &&...args) {
     std::cerr << RED << std::format(fmt, std::forward<Args>(args)...) << RESET
               << std::endl;
@@ -37,6 +44,7 @@ void error(std::format_string<Args...> fmt, Args &&...args) {
 template <typename... Args>
 [[noreturn]] void __attribute__((noreturn))
 panic(std::format_string<Args...> fmt, Args &&...args) {
+    FuzzingAST::TUI::finalizeTUI();
     std::cerr << RED << std::format(fmt, std::forward<Args>(args)...) << RESET
               << std::endl;
     raise(SIGINT);
