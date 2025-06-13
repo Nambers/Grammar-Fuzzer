@@ -27,3 +27,7 @@ Syntax aware token/source codes text mutation based fuzzer.
 ---
 
 or collect branches cover by existent tests. Then set those as "known" to make fuzzer find more deeper branches.
+
+## Pipeline
+
+![pipeline](pipeline.svg)
