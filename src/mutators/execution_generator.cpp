@@ -50,8 +50,8 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
         case ASTNodeKind::Call: {
             // pick function name
             const auto &[fname, sig] = ctx.pickRandomFunc(ast, scopeID);
-            curr.fields.push_back({""}); // placeholder for return arg
-            curr.fields.push_back({fname});
+            curr.fields.emplace_back(""); // placeholder for return arg
+            curr.fields.emplace_back(fname);
             // return value var
             if (sig.returnType != -1) {
                 const auto &retVar = ctx.pickRandomVar(scopeID, sig.returnType);
@@ -68,7 +68,9 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                     break;
                 }
                 globalVars.insert(selfVar);
-                curr.fields.push_back({selfVar});
+                curr.fields[1] = {selfVar + '.' + fname};
+                // static usage
+                // curr.fields.push_back({selfVar});
             }
             // parameters
             for (auto paramType : sig.paramTypes) {
@@ -78,7 +80,7 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                     break;
                 }
                 globalVars.insert(paramVar);
-                curr.fields.push_back({paramVar});
+                curr.fields.emplace_back(paramVar);
             }
             break;
         }
@@ -161,18 +163,16 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
 
     for (int i = 0; i < NUM_GEN; ++i) {
         auto &nodeId = scope.expressions[i];
-        if (nodeId == -1) {
-            nodeId = static_cast<NodeID>(ast.ast.expressions.size());
-            ast.ast.expressions.emplace_back();
-            scope.expressions[i] = nodeId;
-        }
+        nodeId = ast.ast.expressions.size();
+        ast.ast.expressions.emplace_back();
         const auto oldExprCount = ast.ast.expressions.size();
-        if (generate_line(ast.ast.expressions[nodeId], ast, ctx, globalVars,
-                          scopeID, scope) != 0) {
+        ASTNode node;
+        if (generate_line(node, ast, ctx, globalVars, scopeID, scope) != 0) {
             scope.expressions.resize(i);
             ast.ast.expressions.resize(oldExprCount);
             break;
         }
+        ast.ast.expressions[nodeId] = std::move(node);
     }
     if (scopeID != 0 && !globalVars.empty()) {
         // filter out if varName is in scope variables

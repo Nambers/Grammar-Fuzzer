@@ -41,6 +41,7 @@ cleanup() {
 trap cleanup SIGINT
 
 export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0
+export PYTHONWARNINGS=ignore
 
 LLVM_PROFILE_FILE="default_%p.profraw" $BUILD_COV_PATH/targets/CPython/CPythonCov &
 COV_PID=$!

@@ -88,8 +88,28 @@ static std::uniform_int_distribution<int>
 
 static std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
 
+static std::optional<FunctionSignature>
+lookupMethodSig(const std::string &method, const AST &ast,
+                const BuiltinContext &ctx, ScopeID startScopeID) {
+    auto itB = ctx.builtinsFuncs.find(method);
+    if (itB != ctx.builtinsFuncs.end())
+        return itB->second;
+
+    ScopeID sid = startScopeID;
+    while (sid != -1) {
+        const auto &scope = ast.scopes[sid];
+        auto it = scope.funcSignatures.find(method);
+        if (it != scope.funcSignatures.end())
+            return it->second;
+
+        sid = scope.parent;
+    }
+
+    return std::nullopt;
+}
+
 AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
-                                  const BuiltinContext &ctx) {
+                                  BuiltinContext &ctx) {
     size_t typesCnt;
     ScopeID parentScopeID;
     {
@@ -115,7 +135,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
         parentScopeID = scope.parent;
         typesCnt = scope.types.size() + ctx.types.size();
     }
-    std::uniform_int_distribution<size_t> pickType(0, typesCnt - 1);
+
     MutationState state = MutationState::STATE_REROLL;
     while (state == MutationState::STATE_REROLL) {
         state = MutationState::STATE_OK;
@@ -199,6 +219,8 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     ast.declarations[funNodeID].fields.emplace_back(arg);
 
                     funScope.variables.push_back(ast.declarations.size());
+                    // ghost node. will not in scope.declaration but only in
+                    // ast.declaration for sake of type hint
                     ast.declarations.push_back(
                         ASTNode{ASTNodeKind::DeclareVar, pt, {{arg}}});
                     bumpIdentifier(arg);
@@ -224,7 +246,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 const auto &parentScope =
                     (parentScopeID != -1 ? ast.scopes[parentScopeID] : scope);
                 if (typesCnt > 0) {
-                    TypeID tid = pickType(rng);
+                    TypeID tid = ctx.pickRandomType(sid);
                     if (tid < scope.types.size()) {
                         inheritType = tid + SCOPE_MAX_TYPE * (sid + 1);
                         inheritName = scope.types[tid];
@@ -249,7 +271,6 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                         cls.fields.push_back({inheritName});
                 }
 
-                scope.types.push_back(std::get<std::string>(cls.fields[0].val));
                 scope.inheritedTypes.push_back(inheritType);
             }
             // sentinel
@@ -270,8 +291,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     fun.fields.emplace_back(-1);
                 }
 
-                ast.scopes.emplace_back(sid, ast.scopes[sid].types.size() - 1 +
-                                                 SCOPE_MAX_TYPE * (sid + 1));
+                ast.scopes.emplace_back(sid, 0);
 
                 const auto &sig =
                     ctx.builtinsFuncs.at(initName); // get signature
@@ -299,36 +319,101 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             break;
         }
         case MutationPick::AddVariable: {
-            NodeID varID = ast.declarations.size();
             ASTNode var;
             var.kind = ASTNodeKind::DeclareVar;
             var.fields = {{ast.nameCnt}, {}};
             bumpIdentifier(ast.nameCnt);
-            TypeID tid = pickType(rng);
+            TypeID tid = ctx.pickRandomType(sid);
             {
                 auto &scope = ast.scopes[sid];
+                std::string typeName;
                 const auto &parentScope =
                     (parentScopeID != -1 ? ast.scopes[parentScopeID] : scope);
 
                 if (tid < scope.types.size()) {
-                    var.type = scope.inheritedTypes[tid];
-                    var.fields[1].val = scope.types[tid] + "()";
+                    var.type = tid + SCOPE_MAX_TYPE * (1 + sid);
+                    typeName = scope.types[tid];
                 } else {
                     tid -= scope.types.size();
                     if (scope.parent != -1) {
                         if (tid < parentScope.types.size()) {
-                            var.type = parentScope.inheritedTypes[tid];
-                            var.fields[1].val = parentScope.types[tid] + "()";
+                            var.type =
+                                tid + SCOPE_MAX_TYPE * (1 + scope.parent);
+                            typeName = parentScope.types[tid];
                         } else {
                             tid -= parentScope.types.size();
                             var.type = tid;
-                            var.fields[1].val = ctx.types[tid] + "()";
+                            typeName = ctx.types[tid];
                         }
                     } else {
                         var.type = tid;
-                        var.fields[1].val = ctx.types[tid] + "()";
+                        typeName = ctx.types[tid];
                     }
                 }
+                // check if registered `__new__` or `__init__` function
+                // to get args. priority to `__new__`
+                // check builtins, curr scope, parent scope and parent's
+                auto sig =
+                    lookupMethodSig(typeName + ".__new__", ast, ctx, sid);
+                if (!sig) {
+                    sig =
+                        lookupMethodSig(typeName + ".__init__", ast, ctx, sid);
+                }
+                if (!sig) {
+                    var.fields[1].val = typeName + "()"; // default value
+                } else {
+                    // get all args
+                    std::unordered_set<std::string> globalVars;
+                    globalVars.reserve(sig->paramTypes.size());
+                    auto callExpr = std::string(typeName) + "(";
+                    for (size_t i = 0; i < sig->paramTypes.size(); ++i) {
+                        if (i > 0)
+                            callExpr += ", ";
+                        auto varName =
+                            ctx.pickRandomVar(sid, sig->paramTypes[i]);
+                        if (varName.empty()) {
+                            state = MutationState::STATE_REROLL;
+                            break;
+                        }
+                        callExpr += varName;
+                        globalVars.insert(varName);
+                    }
+                    if (state == MutationState::STATE_REROLL)
+                        break; // reroll if failed to pick vars
+                    var.fields[1].val = callExpr + ")";
+                    if (!globalVars.empty() && sid != 0) {
+                        // filter out global variables
+                        for (auto it = globalVars.begin();
+                             it != globalVars.end();) {
+                            bool found = false;
+                            for (const auto &declID : scope.declarations) {
+                                const auto &decl = ast.declarations[declID];
+                                if (std::get<std::string>(decl.fields[0].val) ==
+                                    *it) {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (found)
+                                it = globalVars.erase(it);
+                            else
+                                ++it;
+                        }
+                        if (!globalVars.empty()) {
+                            // add global reference
+                            ast.declarations.emplace_back(
+                                ASTNodeKind::GlobalRef);
+                            scope.declarations.push_back(
+                                ast.declarations.size() - 1);
+                            auto &node = ast.declarations.back();
+                            for (const auto &varName : globalVars) {
+                                node.fields.emplace_back(varName);
+                            }
+                        }
+                    }
+                }
+
+                NodeID varID = ast.declarations.size();
                 scope.variables.push_back(varID);
                 scope.declarations.push_back(varID);
             }

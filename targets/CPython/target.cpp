@@ -91,8 +91,23 @@ int FuzzingAST::initialize(int *argc, char ***argv) {
 
     installSignalHandler();
 
-    // skip signal handling in Python
-    Py_InitializeEx(0);
+    PyConfig config;
+    PyStatus status;
+    PyConfig_InitPythonConfig(&config);
+    status = PyWideStringList_Append(&config.warnoptions, L"ignore");
+    if (PyStatus_Exception(status)) {
+        PyConfig_Clear(&config);
+        Py_ExitStatusException(status);
+    }
+    config.install_signal_handlers = 0;
+    config.parse_argv = 0;
+    config.use_environment = 0;
+
+    status = Py_InitializeFromConfig(&config);
+    PyConfig_Clear(&config);
+    if (PyStatus_Exception(status)) {
+        Py_ExitStatusException(status);
+    }
     driverPyCodeObj =
         Py_CompileString(driverPyConent.c_str(), "<driver.py>", Py_file_input);
     if (PyErr_Occurred()) {
@@ -195,7 +210,7 @@ static TypeID resolveType(const std::string &fullname,
 }
 
 static void errorCallback(const PyObjectPtr &exc, const AST &ast,
-                                 BuiltinContext &ctx) {
+                          BuiltinContext &ctx) {
     PyObjectPtr errVal(PyObject_Str(exc.get()));
     std::string errMsg(PyUnicode_AsUTF8(errVal.get()));
 #ifndef DISABLE_DEBUG_OUTPUT
@@ -431,9 +446,13 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     auto tmp = funcs.get<std::unordered_map<std::string, FunctionSignature>>();
 
     scope.funcSignatures.swap(tmp);
-    // maintain types by ourself
-    // auto tmp2 = j["types"].get<std::vector<std::string>>();
-    // scope.types.swap(tmp2);
+    auto types = j["types"].get<std::vector<std::string>>();
+    for (size_t i = 0; i < types.size(); ++i) {
+        if (resolveType(types[i], ctx, scope, sid) == 0 &&
+            types[i] != "object") {
+            scope.types.push_back(types[i]);
+        }
+    }
     return 0;
 }
 
@@ -450,7 +469,13 @@ void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
                              std::unique_ptr<ExecutionContext> &excCtx) {
     PyObject *dict = reinterpret_cast<PyObject *>(excCtx.get()->getContext());
     // retrieve variable then get type str then match
-    for (const auto &varName : globalVars) {
+    // TODO
+    PyObjectPtr keys(PyDict_Keys(dict));
+    PyObjectPtr iter(PyObject_GetIter(keys.get()));
+    // for (const auto &varName : globalVars) {
+    for (PyObject *key = PyIter_Next(iter.get()); key;
+         key = PyIter_Next(iter.get())) {
+        std::string varName(PyUnicode_AsUTF8(key));
         PyObject *var = PyDict_GetItemString(dict, varName.c_str());
         if (!var) {
             ERROR("Variable '{}' not found in execution context", varName);

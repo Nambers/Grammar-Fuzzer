@@ -1,8 +1,11 @@
 #include "mutators.hpp"
 #include "driver.hpp"
 #include "log.hpp"
+#include "serialization.hpp"
 
 using namespace FuzzingAST;
+
+extern std::string data_backup;
 
 int FuzzingAST::generate_execution(ASTData &ast, BuiltinContext &ctx) {
     // main scope do stream mode
@@ -23,6 +26,7 @@ int FuzzingAST::mutate_declaration(ASTData &astPtr, BuiltinContext &ctx) {
             // TODO rn had to copy once, maye it's able to just copy some parts
             tmpAST = ast;
             tmpAST = mutate_expression(tmpAST, sid, ctx);
+            data_backup = nlohmann::json(tmpAST).dump();
         } while (reflectObject(tmpAST, tmpAST.scopes[sid], sid, ctx) != 0);
         ast = std::move(tmpAST);
     }

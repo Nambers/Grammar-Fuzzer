@@ -12,8 +12,7 @@ enum class MutationState { STATE_OK = 0, STATE_REROLL };
 
 int generate_execution_block(ASTData &ast, const ScopeID &scope,
                              BuiltinContext &ctx);
-AST mutate_expression(AST ast, const ScopeID scopeID,
-                      const BuiltinContext &ctx);
+AST mutate_expression(AST ast, const ScopeID scopeID, BuiltinContext &ctx);
 int generate_execution(ASTData &, BuiltinContext &ctx);
 int mutate_declaration(ASTData &, BuiltinContext &ctx);
 int generate_line(ASTNode &node, const ASTData &ast, BuiltinContext &ctx,

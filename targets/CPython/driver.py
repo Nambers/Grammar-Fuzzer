@@ -103,7 +103,9 @@ def collect_all(enable_builtins=False, results={"funcs": {}, "types": []}):
     else:
         for name, obj in globals().items():
             if inspect.isclass(obj):
-                results["types"].append(name)
+                results["types"].append(
+                    obj.__class__.__module__ + "." + obj.__class__.__qualname__
+                )
                 results["funcs"].update(collect_class_methods(obj, name))
 
     return results

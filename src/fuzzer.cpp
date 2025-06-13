@@ -15,11 +15,20 @@
 #include <iostream>
 #include <signal.h>
 
+#define WRITE_STDERR(msg)                                                      \
+    do {                                                                       \
+        (void)write(STDERR_FILENO, msg, strlen(msg));                          \
+    } while (0)
+#define WRITE_STDOUT(msg)                                                      \
+    do {                                                                       \
+        (void)write(STDOUT_FILENO, msg, strlen(msg));                          \
+    } while (0)
+
 using namespace FuzzingAST;
 extern "C" void __sanitizer_set_death_callback(void (*)(void));
 extern std::vector<std::string> FuzzingAST::cacheCorpus;
 
-static std::string data_backup;
+std::string data_backup;
 static std::string data_backup2;
 static size_t totalRounds = 0;
 static FuzzSchedulerState scheduler;
@@ -49,9 +58,10 @@ void print_backtrace() {
 }
 
 static void crash_handler() {
-    TUI::finalizeTUI();
-    ERROR("crash! last saved states");
-    INFO("AST={}{}", data_backup, data_backup2);
+    WRITE_STDERR("crash! last saved states\n");
+    WRITE_STDOUT("AST=");
+    WRITE_STDOUT(data_backup.c_str());
+    WRITE_STDOUT(data_backup2.c_str());
     fuzzerEmitCacheCorpus();
     int cnt = 0;
     for (const auto &data : scheduler.corpus) {
@@ -59,12 +69,31 @@ static void crash_handler() {
         out << nlohmann::json(data.ast).dump();
     }
     print_backtrace();
-    _exit(1);
+    // _exit(1);
 }
 
 static void sigint_handler(int signo) {
+    WRITE_STDERR("crash! sig=");
+    WRITE_STDERR(strsignal(signo));
+    WRITE_STDERR("\n");
     crash_handler();
-    std::_Exit(130);
+    // std::_Exit(130);
+}
+
+void myTerminateHandler() {
+    std::exception_ptr eptr = std::current_exception();
+    if (eptr) {
+        try {
+            std::rethrow_exception(eptr);
+        } catch (const std::exception &e) {
+            ERROR("Unhandled exception: {}", e.what());
+        } catch (...) {
+            ERROR("Unhandled non-std exception");
+        }
+    } else {
+        ERROR("Terminate called without an active exception");
+    }
+    std::abort();
 }
 
 void FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
@@ -82,6 +111,10 @@ void FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
     initialize(argc, argv);
     // override potential SIGINT handler in language interpreter
     signal(SIGINT, sigint_handler);
+    // signal(SIGSEGV, sigint_handler);
+    signal(SIGABRT, sigint_handler);
+    signal(SIGTERM, sigint_handler);
+    std::set_terminate(myTerminateHandler);
     __sanitizer_set_death_callback(crash_handler);
 }
 
@@ -110,6 +143,7 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
         ASTNode data;
         if (generate_line(data, ast, ctx, globalVars, 0, scope) != 0) {
             // can't generate a valid line, go mutate declaration
+            data_backup2.clear();
             return std::move(history);
         }
         const auto cacheNewEdgeCnt = newEdgeCnt;
@@ -224,6 +258,7 @@ void FuzzingAST::fuzzerDriver() {
             newEdgeCnt = 0; // reset edge count for declaration change
             // continue mutating on current
             ASTData newData = scheduler.corpus[scheduler.idx];
+            newData.ast.expressions.clear();
             mutate_declaration(newData, scheduler.ctx);
             generate_execution(newData, scheduler.ctx);
             scheduler.update(0, newData.ast.declarations.size());
