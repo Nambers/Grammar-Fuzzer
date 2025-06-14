@@ -191,14 +191,14 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
             }
         }
         if (!globalVars.empty()) {
-            scope.expressions.insert(scope.expressions.begin(),
-                                     ast.ast.expressions.size());
             ASTNode globalVarsNode;
             globalVarsNode.kind = ASTNodeKind::GlobalRef;
             globalVarsNode.fields.reserve(globalVars.size());
             for (const auto &var : globalVars) {
                 globalVarsNode.fields.emplace_back(var);
             }
+            scope.expressions.insert(scope.expressions.begin(),
+                                     ast.ast.expressions.size());
             ast.ast.expressions.push_back(globalVarsNode);
         }
     }

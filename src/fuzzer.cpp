@@ -69,7 +69,7 @@ static void crash_handler() {
         out << nlohmann::json(data.ast).dump();
     }
     print_backtrace();
-    // _exit(1);
+    _exit(1);
 }
 
 static void sigint_handler(int signo) {
@@ -77,7 +77,7 @@ static void sigint_handler(int signo) {
     WRITE_STDERR(strsignal(signo));
     WRITE_STDERR("\n");
     crash_handler();
-    // std::_Exit(130);
+    std::_Exit(130);
 }
 
 void myTerminateHandler() {
@@ -112,8 +112,8 @@ void FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
     // override potential SIGINT handler in language interpreter
     signal(SIGINT, sigint_handler);
     // signal(SIGSEGV, sigint_handler);
-    signal(SIGABRT, sigint_handler);
-    signal(SIGTERM, sigint_handler);
+    // signal(SIGABRT, sigint_handler);
+    // signal(SIGTERM, sigint_handler);
     std::set_terminate(myTerminateHandler);
     __sanitizer_set_death_callback(crash_handler);
 }
@@ -244,8 +244,8 @@ void FuzzingAST::fuzzerDriver() {
             if (scheduler.corpus.size() >= 2) {
                 // randomly fallback to one of first half of the corpus
                 // maybe don't remove current one?
-                // scheduler.corpus.erase(scheduler.corpus.begin() +
-                //                        scheduler.idx);
+                scheduler.corpus.erase(scheduler.corpus.begin() +
+                                       scheduler.idx);
                 scheduler.idx = rng() % (scheduler.corpus.size() / 2);
                 scheduler.update(
                     0, scheduler.corpus[scheduler.idx].ast.declarations.size());
@@ -258,8 +258,8 @@ void FuzzingAST::fuzzerDriver() {
             newEdgeCnt = 0; // reset edge count for declaration change
             // continue mutating on current
             ASTData newData = scheduler.corpus[scheduler.idx];
-            newData.ast.expressions.clear();
             mutate_declaration(newData, scheduler.ctx);
+            newData.ast.expressions.clear();
             generate_execution(newData, scheduler.ctx);
             scheduler.update(0, newData.ast.declarations.size());
             scheduler.corpus.push_back(newData);

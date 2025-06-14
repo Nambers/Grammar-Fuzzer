@@ -52,3 +52,13 @@ target_link_libraries(CPythonTest PRIVATE ${Python3_LIBRARIES} nlohmann_json::nl
 target_compile_options(CPythonTest PRIVATE -g -fsanitize=address,undefined)
 target_link_options(CPythonTest PRIVATE -fsanitize=address,undefined -flto -fuse-ld=mold)
 
+# --- convert ---
+set(CONVERT_SOURCE
+    ${PROJECT_SOURCE_DIR}/../../src/ast.cpp
+    ${PROJECT_SOURCE_DIR}/dumper.cpp
+    ${PROJECT_SOURCE_DIR}/convert.cpp
+)
+add_executable(CPythonConvert ${CONVERT_SOURCE})
+target_include_directories(CPythonConvert PRIVATE ${Python3_INCLUDE_DIRS} ${PROJECT_SOURCE_DIR}/../../src)
+target_link_libraries(CPythonConvert PRIVATE ${Python3_LIBRARIES} nlohmann_json::nlohmann_json)
+target_link_options(CPythonConvert PRIVATE -fsanitize=address,undefined -flto -fuse-ld=mold)

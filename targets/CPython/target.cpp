@@ -393,9 +393,9 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
     bool empty = true;
 
     for (NodeID id : scope.declarations) {
-        const auto &node = ast.declarations.at(id);
+        const auto &node = ast.declarations[id];
         if (node.kind != ASTNodeKind::Function) {
-            nodeToPython(script, ast.declarations.at(id), ast, ctx, 0);
+            nodeToPython(script, ast.declarations[id], ast, ctx, 0);
             empty = false;
         }
     }

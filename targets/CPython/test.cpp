@@ -59,7 +59,7 @@ void loadBuiltinsFuncs(BuiltinContext &ctx) {
     types.swap(tmp2);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     Py_Initialize();
     std::ifstream in("ast_test.json");
     if (!in) {
@@ -73,10 +73,26 @@ int main() {
     BuiltinContext ctx;
     loadBuiltinsFuncs(ctx);
     initPrimitiveTypes(ctx);
-    std::ostringstream script;
-    scopeToPython(script, 0, ast, ctx, 0);
-    std::cout << "Generated Python script:\n" << script.str() << "\n";
-    runASTStr(script.str());
+    std::string result;
+    if (argc == 2 && std::string(argv[1]) == "-d") {
+        // only run declarations
+        std::cout << "Generated Python declaration:\n";
+        for (const auto &decl : ast.scopes[0].declarations) {
+            const auto &node = ast.declarations[decl];
+            if (node.kind != ASTNodeKind::Function) {
+                std::ostringstream script;
+                nodeToPython(script, node, ast, ctx, 0);
+                std::cout << script.str();
+                result += script.str();
+            }
+        }
+    } else {
+        std::ostringstream script;
+        scopeToPython(script, 0, ast, ctx, 0);
+        std::cout << "Generated Python script:\n" << script.str() << "\n";
+        result = script.str();
+    }
+    runASTStr(result);
     if (PyErr_Occurred()) {
         PyErr_Print();
     }
