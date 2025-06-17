@@ -4,6 +4,10 @@ import builtins
 from annotationlib import get_annotations, Format
 from typing import Any
 
+_isbuiltin = inspect.isbuiltin
+_isclass = inspect.isclass
+_sig = inspect.signature
+
 BLACKLIST = {
     "eval",
     "exec",
@@ -24,7 +28,7 @@ def resolve_annotations(obj):
 
 def extract_signature(obj, clsname=None, method_type="instance"):
     try:
-        sig = inspect.signature(obj)
+        sig = _sig(obj)
     except (TypeError, ValueError):
         return {
             "paramTypes": ["object", "object"],
@@ -56,11 +60,7 @@ def extract_signature(obj, clsname=None, method_type="instance"):
 def type_name(ann):
     if ann in (inspect.Signature.empty, None, Any):
         return "object"
-    if isinstance(ann, type):
-        return ann.__name__
-    if hasattr(ann, "__forward_arg__"):
-        return ann.__forward_arg__
-    return str(ann)
+    return getattr(ann, "__forward_arg__", getattr(ann, "__name__", str(ann)))
 
 
 def collect_class_methods(cls, qualified_name=None):
@@ -92,17 +92,19 @@ def collect_class_methods(cls, qualified_name=None):
     return methods
 
 
-def collect_all(enable_builtins=False, results={"funcs": {}, "types": []}):
+def collect_all(enable_builtins=False, results=None):
+    if results is None:
+        results = {"funcs": {}, "types": []}
     if enable_builtins:
         for name in dir(builtins):
             obj = getattr(builtins, name)
-            if inspect.isbuiltin(obj) and name not in BLACKLIST:
+            if _isbuiltin(obj) and name not in BLACKLIST:
                 results["funcs"][name] = extract_signature(obj)
-            if inspect.isclass(obj):
+            if _isclass(obj):
                 results["funcs"].update(collect_class_methods(obj, name))
     else:
         for name, obj in globals().items():
-            if inspect.isclass(obj):
+            if _isclass(obj):
                 results["types"].append(
                     obj.__class__.__module__ + "." + obj.__class__.__qualname__
                 )
