@@ -16,6 +16,7 @@ class PythonExecutionContext : public ExecutionContext {
         : dict_(std::move(dict)) {}
 
     void *getContext() override { return dict_.get(); }
+    void releasePtr() override { dict_.release(); }
 
   private:
     PyObjectPtr dict_;

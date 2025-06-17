@@ -152,6 +152,7 @@ class ExecutionContext {
   public:
     virtual ~ExecutionContext() = default;
     virtual void *getContext() = 0;
+    virtual void releasePtr() = 0;
 };
 
 const std::string &getTypeName(TypeID tid, const AST &scope,

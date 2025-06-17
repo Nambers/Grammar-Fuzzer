@@ -106,21 +106,20 @@ TypeID BuiltinContext::pickRandomType(ScopeID scopeID) {
 
 std::string BuiltinContext::pickRandomVar(ScopeID scopeID, TypeID type) {
     const auto &map = index_[scopeID];
-    auto it = map.find(type);
-    const auto *slice =
-        (it != map.end() && !it->second.empty()) ? &it->second : nullptr;
-    if (!slice) {
-        auto fb = map.find(0);
-        if (fb == map.end() || fb->second.empty())
+    auto it = map.end();
+    if (type == 0) {
+        // pick random type from current scope
+        if (map.empty())
             return {};
-        slice = &fb->second;
-    }
-    auto distIt = varDist_[scopeID].find(type != 0 ? type : 0);
-    size_t idx =
-        distIt != varDist_[scopeID].end()
-            ? distIt->second(rng)
-            : std::uniform_int_distribution<size_t>(0, slice->size() - 1)(rng);
-    return (*slice)[idx];
+        std::uniform_int_distribution<size_t> distType(0, map.size() - 1);
+        it = map.begin();
+        std::advance(it, distType(rng));
+        type = it->first; // pick a random type from the map
+    } else
+        it = map.find(type);
+    if (it == map.end() || it->second.empty())
+        return {};
+    return it->second[varDist_[scopeID].find(type)->second(rng)];
 }
 
 std::string BuiltinContext::pickRandomVar(ScopeID scopeID) {

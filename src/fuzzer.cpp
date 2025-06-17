@@ -130,13 +130,13 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
 
     std::unordered_set<std::string> globalVars;
     auto execCtx = getInitExecutionContext();
+    data_backup2.clear();
+    data_backup = nlohmann::json(ast.ast).dump() + "\n---DECL_END---\n";
     // get declarations
     if (runLines(history, ast.ast, ctx, execCtx) != 0) {
         PANIC("Failed to run declarations.");
     };
     const auto sizeTmp = ast.ast.scopes[0].declarations.size();
-    data_backup = "";
-
     while (scheduler.noEdgeCount <= scheduler.execFailureThreshold() &&
            history.size() < 200) {
         TUI::update(scheduler, sizeTmp);

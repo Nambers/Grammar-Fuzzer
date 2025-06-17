@@ -4,6 +4,7 @@
 #include <Python.h>
 #include <fstream>
 #include <iostream>
+#include <sys/time.h>
 
 using json = nlohmann::json;
 using namespace FuzzingAST;
@@ -30,7 +31,15 @@ static void runASTStr(const std::string &re) {
     PyObject *name = PyUnicode_FromString("__main__");
     PyDict_SetItemString(dict, "__name__", name);
     PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
+    struct timeval start{};
+    gettimeofday(&start, nullptr);
     PyObject *result = PyEval_EvalCode(code, dict, dict);
+    struct timeval now{};
+    gettimeofday(&now, nullptr);
+
+    int elapsed_ms = (now.tv_sec - start.tv_sec) * 1000 +
+                     (now.tv_usec - start.tv_usec) / 1000;
+    std::cout << "Execution time: " << elapsed_ms << " ms\n";
     if (!result) {
         if (PyErr_Occurred()) {
             PyErr_Print();

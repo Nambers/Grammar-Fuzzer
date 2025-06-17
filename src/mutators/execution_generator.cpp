@@ -9,9 +9,22 @@ extern std::mt19937 rng;
 static std::uniform_int_distribution<int> pickBinaryOp(0,
                                                        BINARY_OPS.size() - 1);
 static std::uniform_int_distribution<int> pickUnaryOp(0, UNARY_OPS.size() - 1);
-static std::uniform_int_distribution<int>
-    pickExec(static_cast<int>(EXEC_NODE_START),
-             static_cast<int>(EXEC_NODE_END));
+// static std::uniform_int_distribution<int>
+//     pickExec(static_cast<int>(EXEC_NODE_START),
+//              static_cast<int>(EXEC_NODE_END));
+
+constexpr static std::array<int, static_cast<int>(EXEC_NODE_END) -
+                                     static_cast<int>(EXEC_NODE_START) + 1>
+    PICK_EXEC_WEIGHT = {
+        1, // Assign
+        3, // Call
+        1, // Return
+        1, // BinaryOp
+        1  // UnaryOp
+};
+
+static std::discrete_distribution<int> pickExec(PICK_EXEC_WEIGHT.begin(),
+                                                PICK_EXEC_WEIGHT.end());
 
 int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                               BuiltinContext &ctx,
@@ -23,7 +36,8 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
 
     while (state == MutationState::STATE_REROLL && ++attempts < 500) {
         state = MutationState::STATE_OK;
-        ASTNodeKind pick = static_cast<ASTNodeKind>(pickExec(rng));
+        ASTNodeKind pick = static_cast<ASTNodeKind>(
+            static_cast<int>(EXEC_NODE_START) + pickExec(rng));
         curr.kind = pick;
         curr.fields.clear();
 
@@ -114,11 +128,18 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
             TypeID t2 = slice[t1][rng() % slice[t1].size()];
 
             auto a = ctx.pickRandomVar(scopeID, t1);
+            if (a.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            auto a2 = ctx.pickRandomVar(scopeID, t2);
+            if (a2.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
             globalVars.insert(a);
-            curr.fields = {{a},
-                           {ctx.pickRandomVar(scopeID, t1)},
-                           {BINARY_OPS[op]},
-                           {ctx.pickRandomVar(scopeID, t2)}};
+            curr.fields = {
+                {a}, {ctx.pickRandomVar(scopeID, t1)}, {BINARY_OPS[op]}, {a2}};
             break;
         }
 

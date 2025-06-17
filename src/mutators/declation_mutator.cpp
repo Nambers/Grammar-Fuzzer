@@ -41,6 +41,21 @@ enum class MutationPick {
     AddImport,
 };
 
+// static std::uniform_int_distribution<int>
+//     dist(0, static_cast<int>(MutationPick::AddImport));
+
+constexpr static std::array<int, static_cast<int>(MutationPick::AddImport) + 1>
+    PICK_MUTATION_WEIGHT = {
+        2, // AddFunction
+        1, // AddClass
+        3, // AddVariable
+        1, // AddImport
+};
+static std::discrete_distribution<int> dist(PICK_MUTATION_WEIGHT.begin(),
+                                            PICK_MUTATION_WEIGHT.end());
+
+static std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
+
 static bool bumpIdentifier(std::string &id) {
     if (id.empty()) {
         id = "a";
@@ -82,11 +97,6 @@ static bool bumpIdentifier(std::string &id) {
     }
     return false;
 }
-
-static std::uniform_int_distribution<int>
-    dist(0, static_cast<int>(MutationPick::AddImport));
-
-static std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
 
 static std::optional<FunctionSignature>
 lookupMethodSig(const std::string &method, const AST &ast,

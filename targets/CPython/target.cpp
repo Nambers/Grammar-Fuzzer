@@ -267,9 +267,9 @@ static void errorCallback(const PyObjectPtr &exc, const AST &ast,
     }
 }
 
-static int runInternal(const AST &ast, BuiltinContext &ctx,
-                       const PyObjectPtr &code, PyObject *dict,
-                       bool readResult = false, std::string *outStr = nullptr,
+static int runInternal(const AST &ast, BuiltinContext &ctx, PyObjectPtr &code,
+                       PyObject *dict, bool readResult = false,
+                       std::string *outStr = nullptr,
                        uint32_t timeoutMs = 500) {
     if (sigsetjmp(timeoutJmp, 1) == 0) {
         if (readResult) {
@@ -315,6 +315,7 @@ static int runInternal(const AST &ast, BuiltinContext &ctx,
                     errorCallback(exc, ast, ctx);
                     PyErr_Clear();
                     ++errCnt;
+                    result.release();
                     return -1;
                 }
             }
@@ -323,6 +324,8 @@ static int runInternal(const AST &ast, BuiltinContext &ctx,
     } else {
         clear_timeout();
         // PyErr_SetString(PyExc_RuntimeError, "Execution timed out");
+        code.release();
+        ERROR("Execution timed out, restarting Python interpreter");
         // restart Python interpreter
         finalize();
 
@@ -354,9 +357,12 @@ int FuzzingAST::runLine(const ASTNode &node, const AST &ast,
                         std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
     std::ostringstream script;
     nodeToPython(script, node, ast, ctx, 0);
-    return runASTStr(script.str(), ast, ctx,
-                     reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
-                     echo);
+    const auto ret = runASTStr(
+        script.str(), ast, ctx,
+        reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo);
+    if (ret == -2)
+        excCtx->releasePtr();
+    return ret;
 }
 
 int FuzzingAST::runLines(const std::vector<ASTNode> &nodes, const AST &ast,
@@ -372,18 +378,24 @@ int FuzzingAST::runLines(const std::vector<ASTNode> &nodes, const AST &ast,
     for (const auto &node : nodes) {
         nodeToPython(script, node, ast, ctx, 0);
     }
-    return runASTStr(script.str(), ast, ctx,
-                     reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
-                     echo, 2000);
+    const auto ret = runASTStr(
+        script.str(), ast, ctx,
+        reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo, 2000);
+    if (ret == -2)
+        excCtx->releasePtr();
+    return ret;
 }
 
 int FuzzingAST::runAST(const AST &ast, BuiltinContext &ctx,
                        std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
     std::ostringstream script;
     scopeToPython(script, 0, ast, ctx, 0);
-    return runASTStr(script.str(), ast, ctx,
-                     reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
-                     echo);
+    const auto ret = runASTStr(
+        script.str(), ast, ctx,
+        reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo);
+    if (ret == -2)
+        excCtx->releasePtr();
+    return ret;
 }
 
 int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
@@ -421,8 +433,11 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
         runInternal(ast, ctx, code,
                     reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
                     true, &jsonStr);
-    if (ret != 0)
+    if (ret != 0) {
+        if (ret == -2)
+            excCtx->releasePtr();
         return ret;
+    }
     nlohmann::json j = nlohmann::json::parse(jsonStr);
     auto &funcs = j["funcs"];
 
