@@ -7,22 +7,7 @@ set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(nlohmann_json 3.12.0 REQUIRED)
-
-# --- Fetch FTXUI --------------------------------------------------------------
-include(FetchContent)
-
-set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
-set(FETCHCONTENT_QUIET OFF)
-
-FetchContent_Declare(ftxui
-  GIT_REPOSITORY https://github.com/arthursonzogni/ftxui.git
-  GIT_TAG        v6.1.9
-  GIT_PROGRESS   TRUE
-  GIT_SHALLOW    TRUE
-  EXCLUDE_FROM_ALL
-)
-FetchContent_MakeAvailable(ftxui)
-# ------------------------------------------------------------------------------
+find_package(ftxui REQUIRED)
 
 OPTION(DISABLE_DEBUG_OUTPUT OFF)
 OPTION(DISABLE_INFO_OUTPUT OFF)
