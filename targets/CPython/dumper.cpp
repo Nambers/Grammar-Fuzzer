@@ -45,7 +45,19 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
         out << "return ";
         valueToPython(out, node.fields[0], ast, ctx, indentLevel);
         break;
-
+    case ASTNodeKind::GetProp:
+        if (!std::get<std::string>(node.fields[0].val).empty()) {
+            valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+            out << " = ";
+        }
+        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
+        out << '.' << std::get<std::string>(node.fields[2].val);
+        break;
+    case ASTNodeKind::SetProp:
+        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        out << '.' << std::get<std::string>(node.fields[1].val) << " = ";
+        valueToPython(out, node.fields[2], ast, ctx, indentLevel);
+        break;
     case ASTNodeKind::Call:
         if (!std::get<std::string>(node.fields[0].val).empty()) {
             valueToPython(out, node.fields[0], ast, ctx, indentLevel);

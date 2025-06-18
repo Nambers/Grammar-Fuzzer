@@ -9,19 +9,21 @@ extern std::mt19937 rng;
 static std::uniform_int_distribution<int> pickBinaryOp(0,
                                                        BINARY_OPS.size() - 1);
 static std::uniform_int_distribution<int> pickUnaryOp(0, UNARY_OPS.size() - 1);
-// static std::uniform_int_distribution<int>
-//     pickExec(static_cast<int>(EXEC_NODE_START),
-//              static_cast<int>(EXEC_NODE_END));
 
-constexpr static std::array<int, static_cast<int>(EXEC_NODE_END) -
-                                     static_cast<int>(EXEC_NODE_START) + 1>
-    PICK_EXEC_WEIGHT = {
-        1, // Assign
-        3, // Call
-        1, // Return
-        1, // BinaryOp
-        1  // UnaryOp
+constexpr static std::array PICK_EXEC_WEIGHT = {
+    1, // Assign
+    2, // GetProp
+    2, // SetProp
+    3, // Call
+    1, // Return
+    1, // BinaryOp
+    1  // UnaryOp
 };
+
+static_assert(PICK_EXEC_WEIGHT.size() ==
+                  (static_cast<int>(EXEC_NODE_END) -
+                   static_cast<int>(EXEC_NODE_START) + 1),
+              "PICK_EXEC_WEIGHT size mismatch with EXEC_NODE range");
 
 static std::discrete_distribution<int> pickExec(PICK_EXEC_WEIGHT.begin(),
                                                 PICK_EXEC_WEIGHT.end());
@@ -61,9 +63,27 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
             break;
         }
 
+        case ASTNodeKind::GetProp: {
+            // TODO
+            state = MutationState::STATE_REROLL;
+            break;
+        }
+
+        case ASTNodeKind::SetProp: {
+            // TODO
+            state = MutationState::STATE_REROLL;
+            break;
+        }
+
         case ASTNodeKind::Call: {
             // pick function name
-            const auto &[fname, sig] = ctx.pickRandomFunc(ast, scopeID);
+            const auto func = ctx.pickRandomFunc(ast.ast, scopeID);
+            if (!func) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto &sig = func->funcSig;
+            const auto &fname = func->name;
             curr.fields.emplace_back(""); // placeholder for return arg
             curr.fields.emplace_back(fname);
             // return value var
@@ -199,9 +219,9 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
         // filter out if varName is in scope variables
         for (auto it = globalVars.begin(); it != globalVars.end();) {
             bool found = false;
-            for (const auto &varID : scope.variables) {
-                const auto &decl = ast.ast.declarations[varID];
-                if (std::get<std::string>(decl.fields[0].val) == *it) {
+            for (VarID varID : scope.variables) {
+                const auto &varInfo = ast.ast.variables[varID];
+                if (varInfo.name == *it) {
                     it = globalVars.erase(it);
                     found = true;
                     break;

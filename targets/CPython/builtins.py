@@ -64,19 +64,32 @@ def try_construct_dummy(cls):
 def convert_types_to_index(results: dict):
     type_list = results["types"]
     idx_map = {name: i for i, name in enumerate(type_list) if name}
+    real_results = {"funcs": {}, "types": []}
 
     def get_index(type_name: str) -> int:
-        if not type_name:
+        if (not type_name) or type_name == "-1":
             return -1
+        if getattr(builtins, type_name, None) is None:
+            return 0  # object
         if type_name not in idx_map:
             idx_map[type_name] = len(type_list)
             type_list.append(type_name)
         return idx_map[type_name]
 
-    for sig in results["funcs"].values():
-        sig["paramTypes"] = [get_index(t) for t in sig["paramTypes"]]
-        sig["returnType"] = get_index(sig["returnType"])
-        sig["selfType"] = get_index(sig["selfType"] or "")
+    for name, obj in results["funcs"].items():
+        real_results["funcs"][get_index(name)] = []
+        for sig in obj:
+            if sig["isCallable"]:
+                sig["funcSig"]["paramTypes"] = [
+                    get_index(t) for t in sig["funcSig"]["paramTypes"]
+                ]
+                sig["funcSig"]["returnType"] = get_index(sig["funcSig"]["returnType"])
+                sig["funcSig"]["selfType"] = get_index(sig["funcSig"]["selfType"] or "")
+            else:
+                sig["type"] = get_index(sig["type"])
+            real_results["funcs"][get_index(name)].append(sig)
+    real_results["types"] = type_list
+    return real_results
 
 
 def safe_call(op, *args) -> bool:
@@ -92,11 +105,12 @@ if __name__ == "__main__":
         enable_builtins=True, results={"funcs": {}, "types": ["object"]}
     )
 
-    convert_types_to_index(results)
+    results = convert_types_to_index(results)
 
     constructors = []
+
     for name in results["types"]:
-        cls = eval(name, builtins.__dict__, globals())
+        cls = getattr(builtins, name)
         constructors.append(cls)
 
     instances = [try_construct_dummy(ctor) for ctor in constructors]

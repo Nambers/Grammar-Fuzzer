@@ -135,26 +135,6 @@ int FuzzingAST::initialize(int *argc, char ***argv) {
 
 int FuzzingAST::finalize() { return Py_FinalizeEx(); }
 
-void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
-    std::ifstream in("./targets/CPython/builtins.json");
-    if (!in) {
-        PANIC("Failed to open builtins.json, run build.sh to generate it.");
-    }
-    nlohmann::json j;
-    in >> j;
-    auto tmp =
-        j["funcs"].get<std::unordered_map<std::string, FunctionSignature>>();
-    ctx.builtinsFuncs.swap(tmp);
-    ctx.builtinsFuncsCnt = ctx.builtinsFuncs.size();
-    auto tmp2 = j["types"].get<std::vector<std::string>>();
-    ctx.types.swap(tmp2);
-    ctx.builtinTypesCnt = ctx.types.size();
-    auto tmp3 = j["ops"].get<std::vector<std::vector<std::vector<TypeID>>>>();
-    ctx.ops.swap(tmp3);
-    auto tmp4 = j["uops"].get<std::vector<std::vector<TypeID>>>();
-    ctx.unaryOps.swap(tmp4);
-}
-
 void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
     // dummy corpus
     // decl:
@@ -164,14 +144,21 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
     // + int_a = 0
     TypeID bytesType = std::find(ctx.types.begin(), ctx.types.end(), "bytes") -
                        ctx.types.begin();
-    data.ast.declarations.push_back(
-        {ASTNodeKind::DeclareVar, ctx.strID, {{"str_a"}, {"\"\""}}});
-    data.ast.declarations.push_back(
-        {ASTNodeKind::DeclareVar, ctx.strID, {{"str_b"}, {"\"\""}}});
-    data.ast.declarations.push_back(
-        {ASTNodeKind::DeclareVar, bytesType, {{"byte_a"}, {"b\"\""}}});
-    data.ast.declarations.push_back(
-        {ASTNodeKind::DeclareVar, ctx.intID, {{"int_a"}, {0}}});
+    data.ast.declarations.resize(4);
+    data.ast.declarations[0] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"str_a"}, {"\"\""}}};
+    data.ast.declarations[1] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"str_b"}, {"\"\""}}};
+    data.ast.declarations[2] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"byte_a"}, {"b\"\""}}};
+    data.ast.declarations[3] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"int_a"}, {0}}};
+    data.ast.variables.resize(4);
+    data.ast.variables[0] = {ctx.strID, 0, "str_a"};
+    data.ast.variables[1] = {ctx.strID, 0, "str_b"};
+    data.ast.variables[2] = {bytesType, 0, "byte_a"};
+    data.ast.variables[3] = {ctx.intID, 0, "int_a"};
+    data.ast.scopes.resize(1);
     data.ast.scopes[0].declarations.resize(4);
     data.ast.scopes[0].variables.resize(4);
     data.ast.scopes[0].declarations[0] = 0;
@@ -184,33 +171,24 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
     data.ast.scopes[0].variables[3] = 3;
 }
 
-static TypeID resolveType(const std::string &fullname,
-                          const BuiltinContext &ctx, const ASTScope &scope,
-                          ScopeID sid) {
-    auto matches = [&](const std::string &t) {
-        if (fullname == t)
-            return true;
-        if (t.size() > fullname.size())
-            return t.ends_with(fullname);
-
-        return false;
-    };
-
-    for (size_t i = 0; i < ctx.types.size(); ++i) {
-        if (matches(ctx.types[i])) {
-            return i;
-        }
+static std::string getQuoteText(const std::string &str, size_t &pos) {
+    size_t start = pos;
+    size_t end = str.find_first_of("\"'", start);
+    if (end == std::string::npos) {
+        return "";
     }
-    for (size_t j = 0; j < scope.types.size(); ++j) {
-        if (matches(scope.types[j])) {
-            return j + (sid + 1) * SCOPE_MAX_TYPE;
-        }
+    char quoteChar = str[end];
+    end = str.find(quoteChar, end + 1);
+    if (end == std::string::npos) {
+        return "";
     }
-    return 0; // object
+    pos = end + 1; // move past the closing quote
+    return str.substr(start, end - start + 1);
 }
 
-static void errorCallback(const PyObjectPtr &exc, const AST &ast,
-                          BuiltinContext &ctx) {
+static void errorCallback(const AST &ast, BuiltinContext &ctx,
+                          std::optional<ASTNode> node = std::nullopt) {
+    PyObjectPtr exc(PyErr_GetRaisedException());
     PyObjectPtr errVal(PyObject_Str(exc.get()));
     std::string errMsg(PyUnicode_AsUTF8(errVal.get()));
 #ifndef DISABLE_DEBUG_OUTPUT
@@ -228,14 +206,7 @@ static void errorCallback(const PyObjectPtr &exc, const AST &ast,
             std::string opName = errMsg.substr(badUnaryOp.length(),
                                                colonPos - badUnaryOp.length());
 
-            auto firstQuote = errMsg.find("'", colonPos);
-            auto lastQuote = errMsg.rfind("'");
-            if (firstQuote == std::string::npos ||
-                lastQuote == std::string::npos || firstQuote >= lastQuote)
-                return;
-
-            std::string targetType =
-                errMsg.substr(firstQuote + 1, lastQuote - firstQuote - 1);
+            std::string targetType = getQuoteText(errMsg, ++colonPos);
 
             auto opIt = std::find(UNARY_OPS.begin(), UNARY_OPS.end(), opName);
             if (opIt == UNARY_OPS.end())
@@ -265,20 +236,18 @@ static void errorCallback(const PyObjectPtr &exc, const AST &ast,
         }
         // TODO
     }
+    PyErr_Clear();
 }
 
 static int runInternal(const AST &ast, BuiltinContext &ctx, PyObjectPtr &code,
                        PyObject *dict, bool readResult = false,
                        std::string *outStr = nullptr,
-                       uint32_t timeoutMs = 500) {
+                       uint32_t timeoutMs = 600) {
     if (sigsetjmp(timeoutJmp, 1) == 0) {
         if (readResult) {
             PyObjectPtr result(PyEval_EvalCode(code.get(), dict, dict));
             if (!result) {
                 if (PyErr_Occurred()) {
-                    PyObjectPtr exc(PyErr_GetRaisedException());
-                    errorCallback(exc, ast, ctx);
-                    PyErr_Clear();
                     return -1;
                 }
             }
@@ -311,11 +280,7 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObjectPtr &code,
 
             if (!result) {
                 if (PyErr_Occurred()) {
-                    PyObjectPtr exc(PyErr_GetRaisedException());
-                    errorCallback(exc, ast, ctx);
-                    PyErr_Clear();
                     ++errCnt;
-                    result.release();
                     return -1;
                 }
             }
@@ -336,16 +301,13 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObjectPtr &code,
 
 static inline int runASTStr(const std::string &re, const AST &ast,
                             BuiltinContext &ctx, PyObject *dict, bool echo,
-                            uint32_t timeoutMs = 500) {
+                            uint32_t timeoutMs = 600) {
     if (echo) {
         std::cout << "[Generated Python]:\n" << re << "\n";
     }
 
     PyObjectPtr code(Py_CompileString(re.c_str(), "<ast>", Py_file_input));
     if (PyErr_Occurred()) {
-        PyObjectPtr exc(PyErr_GetRaisedException());
-        errorCallback(exc, ast, ctx);
-        PyErr_Clear();
         return -1;
     }
 
@@ -360,7 +322,9 @@ int FuzzingAST::runLine(const ASTNode &node, const AST &ast,
     const auto ret = runASTStr(
         script.str(), ast, ctx,
         reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo);
-    if (ret == -2)
+    if (ret == -1)
+        errorCallback(ast, ctx, std::move(node));
+    else if (ret == -2)
         excCtx->releasePtr();
     return ret;
 }
@@ -381,7 +345,9 @@ int FuzzingAST::runLines(const std::vector<ASTNode> &nodes, const AST &ast,
     const auto ret = runASTStr(
         script.str(), ast, ctx,
         reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo, 2000);
-    if (ret == -2)
+    if (ret == -1)
+        errorCallback(ast, ctx);
+    else if (ret == -2)
         excCtx->releasePtr();
     return ret;
 }
@@ -393,13 +359,15 @@ int FuzzingAST::runAST(const AST &ast, BuiltinContext &ctx,
     const auto ret = runASTStr(
         script.str(), ast, ctx,
         reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo);
-    if (ret == -2)
+    if (ret == -1)
+        errorCallback(ast, ctx);
+    else if (ret == -2)
         excCtx->releasePtr();
     return ret;
 }
 
-int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
-                              const ScopeID sid, BuiltinContext &ctx) {
+int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
+                              BuiltinContext &ctx) {
     std::ostringstream script;
 
     bool empty = true;
@@ -439,32 +407,51 @@ int FuzzingAST::reflectObject(const AST &ast, ASTScope &scope,
         return ret;
     }
     nlohmann::json j = nlohmann::json::parse(jsonStr);
+    std::unordered_map<TypeID, std::vector<PropInfo>> tmpMethods;
     auto &funcs = j["funcs"];
 
-    for (auto &[_name, sig] : funcs.items()) {
-        for (auto &typeName : sig["paramTypes"]) {
-            typeName =
-                resolveType(typeName.get<std::string>(), ctx, scope, sid);
-        }
-
-        if (sig.contains("returnType"))
-            sig["returnType"] = resolveType(
-                sig["returnType"].get<std::string>(), ctx, scope, sid);
-
-        if (sig.contains("selfType") && !sig["selfType"].is_null())
-            sig["selfType"] = resolveType(sig["selfType"].get<std::string>(),
-                                          ctx, scope, sid);
+    for (auto &[_tname, obj] : funcs.items()) {
+        TypeID typeID;
+        if (_tname == "-1")
+            typeID = -1;
         else
-            sig["selfType"] = -1;
+            typeID = resolveType(_tname, ctx, ast, sid);
+        if (!tmpMethods.contains(typeID)) {
+            tmpMethods.emplace(typeID, std::vector<PropInfo>());
+        }
+        auto &vec = tmpMethods[typeID];
+        for (auto &[_name, sig] : obj.items()) {
+            for (auto &typeName : sig["paramTypes"]) {
+                typeName =
+                    resolveType(typeName.get<std::string>(), ctx, ast, sid);
+            }
+
+            if (sig.contains("returnType"))
+                sig["returnType"] = resolveType(
+                    sig["returnType"].get<std::string>(), ctx, ast, sid);
+
+            if (sig.contains("selfType") && !sig["selfType"].is_null())
+                sig["selfType"] = resolveType(
+                    sig["selfType"].get<std::string>(), ctx, ast, sid);
+            else
+                sig["selfType"] = -1;
+            PropInfo pi;
+            pi.name = _name;
+            pi.scope = sid;
+            pi.type = typeID;
+            pi.isCallable = true;
+            pi.funcSig.paramTypes =
+                sig["paramTypes"].get<std::vector<TypeID>>();
+            pi.funcSig.returnType = sig["returnType"].get<TypeID>();
+            pi.funcSig.selfType = sig["selfType"].get<TypeID>();
+            tmpMethods[typeID].push_back(pi);
+        }
     }
+    ast.classProps.swap(tmpMethods);
 
-    auto tmp = funcs.get<std::unordered_map<std::string, FunctionSignature>>();
-
-    scope.funcSignatures.swap(tmp);
     auto types = j["types"].get<std::vector<std::string>>();
     for (size_t i = 0; i < types.size(); ++i) {
-        if (resolveType(types[i], ctx, scope, sid) == 0 &&
-            types[i] != "object") {
+        if (resolveType(types[i], ctx, ast, sid) == 0 && types[i] != "object") {
             scope.types.push_back(types[i]);
         }
     }
@@ -484,7 +471,6 @@ void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
                              std::unique_ptr<ExecutionContext> &excCtx) {
     PyObject *dict = reinterpret_cast<PyObject *>(excCtx.get()->getContext());
     // retrieve variable then get type str then match
-    // TODO
     PyObjectPtr keys(PyDict_Keys(dict));
     PyObjectPtr iter(PyObject_GetIter(keys.get()));
     // for (const auto &varName : globalVars) {
@@ -501,17 +487,16 @@ void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
             continue;
         }
         std::string typeStr(Py_TYPE(var)->tp_name);
-        TypeID typeID = resolveType(typeStr, ctx, ast.ast.scopes[0], 0);
+        TypeID typeID = resolveType(typeStr, ctx, ast.ast, 0);
         if (typeID == 0) {
             WARN("Failed to resolve type '{}' for variable '{}'", typeStr,
                  varName);
         }
         // update type
-        for (NodeID declID : ast.ast.scopes[0].declarations) {
-            const auto &decl = ast.ast.declarations[declID];
-            if (decl.kind == ASTNodeKind::DeclareVar &&
-                std::get<std::string>(decl.fields[0].val) == varName) {
-                ast.ast.declarations[declID].type = typeID;
+        for (VarID varID : ast.ast.scopes[0].variables) {
+            const auto &varInfo = ast.ast.variables[varID];
+            if (varInfo.name == varName) {
+                ast.ast.variables[varID].type = typeID;
                 continue;
             }
         }

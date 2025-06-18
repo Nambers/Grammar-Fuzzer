@@ -12,6 +12,7 @@ message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
 set(TARGET_SOURCE
     ${PROJECT_SOURCE_DIR}/dumper.cpp
     ${PROJECT_SOURCE_DIR}/target.cpp
+    ${PROJECT_SOURCE_DIR}/builtins.cpp
 )
 
 add_library(CPythonTargetOption INTERFACE)
@@ -32,6 +33,7 @@ set(COV_SOURCE
     ${PROJECT_SOURCE_DIR}/../../src/ast.cpp
     ${PROJECT_SOURCE_DIR}/dumper.cpp
     ${PROJECT_SOURCE_DIR}/cov.cpp
+    ${PROJECT_SOURCE_DIR}/builtins.cpp
 )
 
 add_executable(CPythonCov ${COV_SOURCE})
@@ -44,6 +46,7 @@ set(TEST_SOURCE
     ${PROJECT_SOURCE_DIR}/../../src/ast.cpp
     ${PROJECT_SOURCE_DIR}/dumper.cpp
     ${PROJECT_SOURCE_DIR}/test.cpp
+    ${PROJECT_SOURCE_DIR}/builtins.cpp
 )
 
 add_executable(CPythonTest ${TEST_SOURCE})
@@ -57,6 +60,7 @@ set(CONVERT_SOURCE
     ${PROJECT_SOURCE_DIR}/../../src/ast.cpp
     ${PROJECT_SOURCE_DIR}/dumper.cpp
     ${PROJECT_SOURCE_DIR}/convert.cpp
+    ${PROJECT_SOURCE_DIR}/builtins.cpp
 )
 add_executable(CPythonConvert ${CONVERT_SOURCE})
 target_include_directories(CPythonConvert PRIVATE ${Python3_INCLUDE_DIRS} ${PROJECT_SOURCE_DIR}/../../src)

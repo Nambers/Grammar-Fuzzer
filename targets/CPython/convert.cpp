@@ -1,4 +1,5 @@
 #include "ast.hpp"
+#include "driver.hpp"
 #include "dumper.hpp"
 #include "serialization.hpp"
 #include <Python.h>
@@ -17,21 +18,6 @@ PANIC(std::format_string<Args...> fmt, Args &&...args) {
     std::cerr << RED << std::format(fmt, std::forward<Args>(args)...) << RESET
               << std::endl;
     abort();
-}
-
-void loadBuiltinsFuncs(BuiltinContext &ctx) {
-    auto &funcSignatures = ctx.builtinsFuncs;
-    auto &types = ctx.types;
-    FILE *file = fopen("./targets/CPython/builtins.json", "r");
-    if (!file) {
-        PANIC("Failed to open builtins.json, run build.sh to generate it.");
-    }
-    nlohmann::json j = nlohmann::json::parse(file);
-    auto tmp =
-        j["funcs"].get<std::unordered_map<std::string, FunctionSignature>>();
-    funcSignatures.swap(tmp);
-    auto tmp2 = j["types"].get<std::vector<std::string>>();
-    types.swap(tmp2);
 }
 
 int main(int argc, char *argv[]) {

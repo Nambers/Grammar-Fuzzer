@@ -2,6 +2,7 @@
 #define AST_HPP
 
 #include <array>
+#include <optional>
 #include <random>
 #include <string>
 #include <unordered_map>
@@ -13,6 +14,7 @@ namespace FuzzingAST {
 using NodeID = int;
 using ScopeID = int;
 using TypeID = int;
+using VarID = int;
 
 constexpr size_t SCOPE_MAX_TYPE = 200;
 constexpr std::array BINARY_OPS{"+",  "-",  "*",  "/", "%",  "**",
@@ -27,7 +29,9 @@ enum class ASTNodeKind {
     Import,       // import x
                   // ---
     Assign,       // x = y
-    Call,         // f(x)
+    GetProp,      // z = x.y
+    SetProp,      // x.y = z
+    Call,         // z = y(x)
     Return,       // return x
     BinaryOp,     // x + y
     UnaryOp,      // -x
@@ -46,12 +50,22 @@ class FunctionSignature {
     TypeID returnType = -1;
 };
 
+class PropInfo {
+  public:
+    TypeID type = -1;
+    ScopeID scope = -1;
+    std::string name;
+    bool isConst = false;
+    bool isCallable = false;
+    FunctionSignature funcSig = {};
+};
+
 class ASTData; // forward declaration
+class AST;
 
 class BuiltinContext {
   public:
-    std::unordered_map<std::string, FunctionSignature> builtinsFuncs = {};
-    size_t builtinsFuncsCnt = 0;
+    std::unordered_map<TypeID, std::vector<PropInfo>> builtinsProps = {};
     std::vector<std::string> types = {};
     size_t builtinTypesCnt = 0;
     std::vector<std::vector<std::vector<TypeID>>> ops = {};
@@ -64,7 +78,12 @@ class BuiltinContext {
   public:
     // Build index for all scopes, merging parent scope and initializing
     // distributions
-    void update(ASTData &ast);
+    void updateVars(const ASTData &ast);
+    void updateFuncs(const ASTData &ast);
+    inline void update(const ASTData &ast) {
+        updateVars(ast);
+        updateFuncs(ast);
+    }
 
     // Pick a random type available in given scope (fallback to 0)
     TypeID pickRandomType(ScopeID scopeID);
@@ -78,24 +97,31 @@ class BuiltinContext {
     std::string pickRandomVar(ScopeID scopeID,
                               const std::vector<TypeID> &types);
 
-    const std::pair<const std::string, FunctionSignature> &
-    pickRandomFunc(const ASTData &ast, ScopeID scopeID);
+    std::optional<PropInfo> pickRandomFunc(const AST &ast, ScopeID scopeID);
+    std::optional<PropInfo> pickRandomMethod(const AST &ast, TypeID tid);
 
   private:
-    std::vector<std::unordered_map<TypeID, std::vector<std::string>>>
-        index_; // one map per scope,
-                // includes inherited
-                // variables
+    // avoid store ptr
+    class PropKey {
+      public:
+        bool isBuiltin; // true -> builtinsProps
+        size_t idx;
+        TypeID type; // builtinProps[type]
+    };
+
+    std::vector<std::unordered_map<TypeID, std::vector<std::string>>> index_;
 
     std::vector<std::vector<TypeID>> typeList_;
     std::vector<std::uniform_int_distribution<size_t>> typeDist_;
-
     std::vector<
         std::unordered_map<TypeID, std::uniform_int_distribution<size_t>>>
         varDist_;
 
+    std::vector<std::vector<PropKey>> funcList_;
     std::vector<std::uniform_int_distribution<size_t>> funcDist_;
     std::vector<size_t> funcCnts_;
+    std::unordered_map<TypeID, std::uniform_int_distribution<size_t>>
+        methodDist_;
 };
 
 class ASTNodeValue {
@@ -106,8 +132,6 @@ class ASTNodeValue {
 class ASTNode {
   public:
     ASTNodeKind kind;
-    // only it's declareVar, the type is the type of the variable, lvar
-    TypeID type = -1;
     /*
     assign: [0] = [1]
     unaryOp: [0] = [1] [2]
@@ -124,12 +148,12 @@ class ASTScope {
   public:
     ScopeID parent = -1;
     TypeID retType = -1;
+    int paramCnt = 0;
     std::vector<NodeID> declarations = {};
     std::vector<NodeID> expressions = {};
     std::vector<std::string> types = {};
     std::vector<TypeID> inheritedTypes = {};
-    std::vector<int> variables = {};
-    std::unordered_map<std::string, FunctionSignature> funcSignatures = {};
+    std::vector<VarID> variables = {};
 };
 
 class AST {
@@ -138,6 +162,11 @@ class AST {
     std::vector<ASTScope> scopes = {};
     std::vector<ASTNode> declarations = {};
     std::vector<ASTNode> expressions = {};
+    std::vector<PropInfo> variables = {};
+    // we don't do normal function in fuzzing,
+    // bc it is very unlikely to trigger bugs
+    // std::vector<PropInfo> functions;
+    std::unordered_map<TypeID, std::vector<PropInfo>> classProps;
 
     // generate main block
     AST() : scopes({ASTScope()}) {}
@@ -157,6 +186,11 @@ class ExecutionContext {
 
 const std::string &getTypeName(TypeID tid, const AST &scope,
                                const BuiltinContext &ctx);
+TypeID resolveType(const std::string &fullname, const BuiltinContext &ctx,
+                   const AST &ast, ScopeID sid);
+std::optional<PropInfo> getPropByName(const std::string &name,
+                                      const std::vector<PropInfo> &slice,
+                                      bool isCallable, ScopeID sid);
 void initPrimitiveTypes(BuiltinContext &ctx);
 }; // namespace FuzzingAST
 

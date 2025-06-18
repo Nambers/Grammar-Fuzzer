@@ -66,19 +66,24 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ASTNodeKind,
                               {ASTNodeKind::DeclareVar, "DeclareVar"},
                               {ASTNodeKind::Import, "Import"},
                               {ASTNodeKind::Assign, "Assign"},
+                              {ASTNodeKind::GetProp, "GetProp"},
+                              {ASTNodeKind::SetProp, "SetProp"},
                               {ASTNodeKind::Call, "Call"},
                               {ASTNodeKind::Return, "Return"},
                               {ASTNodeKind::BinaryOp, "BinaryOp"},
                               {ASTNodeKind::UnaryOp, "UnaryOp"},
                               {ASTNodeKind::GlobalRef, "GlobalRef"}});
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTNode, kind, fields, scope, type);
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTScope, declarations, expressions,
-                                   variables, types, inheritedTypes,
-                                   funcSignatures, parent, retType);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(FunctionSignature, paramTypes, selfType,
                                    returnType);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(PropInfo, type, name,
+                                                isCallable, isConst, scope,
+                                                funcSig);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTNode, kind, fields, scope);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTScope, declarations, expressions,
+                                   variables, types, inheritedTypes, parent,
+                                   retType, paramCnt);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AST, nameCnt, scopes, declarations,
-                                   expressions);
+                                   expressions, classProps, variables);
 
 }; // namespace FuzzingAST
 

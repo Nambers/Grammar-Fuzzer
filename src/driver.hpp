@@ -17,7 +17,7 @@ int runLine(const ASTNode &node, const AST &, BuiltinContext &ctx,
 int initialize(int *, char ***);
 int finalize();
 void loadBuiltinsFuncs(BuiltinContext &ctx);
-int reflectObject(const AST &ast, ASTScope &scope, const ScopeID sid, BuiltinContext &ctx);
+int reflectObject(AST &ast, ASTScope &scope, const ScopeID sid, BuiltinContext &ctx);
 void dummyAST(ASTData &data, const BuiltinContext &scheduler);
 std::unique_ptr<ExecutionContext> getInitExecutionContext();
 void updateTypes(const std::unordered_set<std::string> &globalVars, ASTData &ast,

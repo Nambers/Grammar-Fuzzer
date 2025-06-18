@@ -62,7 +62,7 @@ EOF
 cat >"$WORK_DIR/.clangd" <<EOF
 CompileFlags:
   Add: [
-    $(printf '"-I%s",\n' "${INCLUDE_DIRS[@]}")
+$(printf '\t"-I%s",\n' "${INCLUDE_DIRS[@]}")
     "-ferror-limit=0"
   ]
 EOF
