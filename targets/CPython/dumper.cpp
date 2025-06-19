@@ -35,28 +35,17 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
         valueToPython(out, node.fields[1], ast, ctx, indentLevel);
         break;
     }
-    case ASTNodeKind::Assign:
-        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
-        out << " = ";
-        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
-        break;
 
     case ASTNodeKind::Return:
         out << "return ";
         valueToPython(out, node.fields[0], ast, ctx, indentLevel);
         break;
     case ASTNodeKind::GetProp:
-        if (!std::get<std::string>(node.fields[0].val).empty()) {
-            valueToPython(out, node.fields[0], ast, ctx, indentLevel);
-            out << " = ";
-        }
-        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
-        out << '.' << std::get<std::string>(node.fields[2].val);
-        break;
+        [[fallthrough]];
     case ASTNodeKind::SetProp:
         valueToPython(out, node.fields[0], ast, ctx, indentLevel);
-        out << '.' << std::get<std::string>(node.fields[1].val) << " = ";
-        valueToPython(out, node.fields[2], ast, ctx, indentLevel);
+        out << " = ";
+        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
         break;
     case ASTNodeKind::Call:
         if (!std::get<std::string>(node.fields[0].val).empty()) {
@@ -138,7 +127,7 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
         for (; idx < node.fields.size(); ++idx) {
             NodeID fnID =
                 static_cast<NodeID>(std::get<int64_t>(node.fields[idx].val));
-            nodeToPython(out, ast.declarations.at(fnID), ast, ctx,
+            nodeToPython(out, ast.declarations[fnID], ast, ctx,
                          indentLevel + 1);
             bodyEmpty = false;
         }

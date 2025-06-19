@@ -4,6 +4,7 @@ import builtins
 from annotationlib import get_annotations, Format
 from typing import Any
 import re
+import keyword
 
 _isclass = inspect.isclass
 _sig = inspect.signature
@@ -22,11 +23,42 @@ BLACKLIST = {
     "NotImplemented",
     "Error",
     "__",
+    "copyright",
+    "license",
+    "credits",
 }
+
+
+def is_name_assignable(name: str) -> bool:
+    return (
+        name.isidentifier()
+        and not keyword.iskeyword(name)
+        and name not in ("True", "False", "None")
+    )
 
 
 def resolve_annotations(obj):
     return get_annotations(obj, format=Format.VALUE)
+
+
+def type_name(ann):
+    if ann in (inspect.Signature.empty, None, Any):
+        return "object"
+
+    if isinstance(ann, type):
+        return ann.__name__
+
+    # For typing constructs like ForwardRef, Union, etc.
+    if hasattr(ann, "__forward_arg__"):
+        return ann.__forward_arg__
+
+    if hasattr(ann, "__name__"):
+        return ann.__name__
+
+    if hasattr(ann, "__class__") and hasattr(ann.__class__, "__name__"):
+        return ann.__class__.__name__
+
+    return "object"
 
 
 def _parse_text_sig(txt: str) -> dict:
@@ -70,7 +102,7 @@ def extract_signature(obj, clsname=None, method_type="instance"):
         total = counts["pos_or_kw"] + counts["kw_only"]
         return {
             "paramTypes": ["object"] * total,
-            "selfType": clsname if method_type != "static" else None,
+            "selfType": clsname if method_type != "static" else "",
             "returnType": "object",
         }
     ann = resolve_annotations(obj)
@@ -83,27 +115,24 @@ def extract_signature(obj, clsname=None, method_type="instance"):
             continue
 
         if param.annotation is inspect.Parameter.empty:
-            if param.default is not inspect.Parameter.empty:
-                param_types.append(type_name(param.default))
+            if name in ann:
+                param_types.append(type_name(ann[name]))
+            elif param.default is not inspect.Parameter.empty:
+                param_types.append(type_name(param.default.__class__))
             else:
-                param_types.append(type_name(ann.get(name, Any)))
+                param_types.append("object")
+
         else:
             param_types.append(type_name(param.annotation))
 
     return_type = type_name(ann.get("return", Any))
-    self_type = clsname if method_type != "static" else None
+    self_type = clsname if method_type != "static" else ""
 
     return {
         "paramTypes": param_types,
         "selfType": self_type,
         "returnType": return_type,
     }
-
-
-def type_name(ann):
-    if ann in (inspect.Signature.empty, None, Any):
-        return "object"
-    return getattr(ann, "__forward_arg__", getattr(type(ann), "__name__", "object"))
 
 
 def collect_class_methods(cls, qualified_name=None):
@@ -160,7 +189,12 @@ def collect_all(enable_builtins=False, results=None):
                         )
                     else:
                         results["funcs"]["-1"].append(
-                            {"name": name, "type": type_name(obj), "isCallable": False}
+                            {
+                                "name": name,
+                                "type": type_name(obj),
+                                "isCallable": False,
+                                "isConst": is_name_assignable(name),
+                            }
                         )
     else:
         for name, obj in globals().items():

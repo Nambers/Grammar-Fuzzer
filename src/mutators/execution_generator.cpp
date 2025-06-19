@@ -11,7 +11,6 @@ static std::uniform_int_distribution<int> pickBinaryOp(0,
 static std::uniform_int_distribution<int> pickUnaryOp(0, UNARY_OPS.size() - 1);
 
 constexpr static std::array PICK_EXEC_WEIGHT = {
-    1, // Assign
     2, // GetProp
     2, // SetProp
     3, // Call
@@ -45,50 +44,65 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
 
         switch (pick) {
 
-        case ASTNodeKind::Assign: {
-            // pick a random type and two vars
-            TypeID t = ctx.pickRandomType(scopeID);
-            auto v1 = ctx.pickRandomVar(scopeID, t);
-            if (v1.empty()) {
-                state = MutationState::STATE_REROLL;
-                break;
-            }
-            auto v2 = ctx.pickRandomVar(scopeID, t);
-            if (v1 == v2) {
-                state = MutationState::STATE_REROLL;
-                break;
-            }
-            curr.fields = {{v1}, {v2}};
-            globalVars.insert(v1);
-            break;
-        }
-
-        case ASTNodeKind::GetProp: {
-            // TODO
-            state = MutationState::STATE_REROLL;
-            break;
-        }
+        case ASTNodeKind::GetProp:
+            [[fallthrough]];
 
         case ASTNodeKind::SetProp: {
-            // TODO
-            state = MutationState::STATE_REROLL;
+            TypeID t = ctx.pickRandomType(scopeID);
+            const auto v1Key = ctx.pickRandomVar(scopeID, t, false);
+            if (v1Key.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto v2Key = ctx.pickRandomVar(scopeID, t, ctx.pickConst());
+            if (v1Key == v2Key || v2Key.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            if (v1Key.parentType != -1) {
+                // need to find an instance
+                // TODO
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            if (v2Key.parentType != -1) {
+                // need to find an instance
+                // TODO
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto &v1 = unfoldKey(v1Key, ast.ast, ctx);
+            const auto &v2 = unfoldKey(v2Key, ast.ast, ctx);
+            if (v1.isConst || v2.isConst) {
+                // cannot set property of const variable
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+
+            curr.fields = {{v1.name}, {v2.name}};
+            globalVars.insert(v1.name);
             break;
         }
 
         case ASTNodeKind::Call: {
             // pick function name
-            const auto func = ctx.pickRandomFunc(ast.ast, scopeID);
-            if (!func) {
+            const auto funcKey = ctx.pickRandomFunc(scopeID);
+            if (funcKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto &sig = func->funcSig;
-            const auto &fname = func->name;
+            const auto &func = unfoldKey(funcKey, ast.ast, ctx);
+            const auto &sig = func.funcSig;
+            const auto &fname = func.name;
             curr.fields.emplace_back(""); // placeholder for return arg
             curr.fields.emplace_back(fname);
             // return value var
             if (sig.returnType != -1) {
-                const auto &retVar = ctx.pickRandomVar(scopeID, sig.returnType);
+                const auto retVarKey =
+                    ctx.pickRandomVar(scopeID, sig.returnType, false);
+                const auto &retVar =
+                    retVarKey.empty() ? ""
+                                      : unfoldKey(retVarKey, ast.ast, ctx).name;
                 curr.fields[0] = {retVar};
                 if (!retVar.empty()) {
                     globalVars.insert(retVar);
@@ -96,11 +110,13 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
             }
             if (sig.selfType != -1) {
                 // if it's a method, add self as first parameter
-                const auto &selfVar = ctx.pickRandomVar(scopeID, sig.selfType);
-                if (selfVar.empty()) {
+                const auto selfVarKey =
+                    ctx.pickRandomVar(scopeID, sig.selfType, false);
+                if (selfVarKey.empty()) {
                     state = MutationState::STATE_REROLL;
                     break;
                 }
+                const auto &selfVar = unfoldKey(selfVarKey, ast.ast, ctx).name;
                 globalVars.insert(selfVar);
                 curr.fields[1] = {selfVar + '.' + fname};
                 // static usage
@@ -108,11 +124,14 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
             }
             // parameters
             for (auto paramType : sig.paramTypes) {
-                const auto &paramVar = ctx.pickRandomVar(scopeID, paramType);
-                if (paramVar.empty()) {
+                const auto paramVarKey =
+                    ctx.pickRandomVar(scopeID, paramType, ctx.pickConst());
+                if (paramVarKey.empty()) {
                     state = MutationState::STATE_REROLL;
                     break;
                 }
+                const auto &paramVar =
+                    unfoldKey(paramVarKey, ast.ast, ctx).name;
                 globalVars.insert(paramVar);
                 curr.fields.emplace_back(paramVar);
             }
@@ -121,11 +140,13 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
 
         case ASTNodeKind::Return: {
             if (scope.retType != -1) {
-                const auto &retVar = ctx.pickRandomVar(scopeID, scope.retType);
-                if (retVar.empty()) {
+                const auto retVarKey =
+                    ctx.pickRandomVar(scopeID, scope.retType, ctx.pickConst());
+                if (retVarKey.empty()) {
                     state = MutationState::STATE_REROLL;
                     break;
                 }
+                const auto &retVar = unfoldKey(retVarKey, ast.ast, ctx).name;
                 curr.fields = {{retVar}};
             } else {
                 state = MutationState::STATE_REROLL;
@@ -147,19 +168,26 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
             }
             TypeID t2 = slice[t1][rng() % slice[t1].size()];
 
-            auto a = ctx.pickRandomVar(scopeID, t1);
-            if (a.empty()) {
+            const auto aKey = ctx.pickRandomVar(scopeID, t1, false);
+            if (aKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            auto a2 = ctx.pickRandomVar(scopeID, t2);
-            if (a2.empty()) {
+            const auto a2Key = ctx.pickRandomVar(scopeID, t2, ctx.pickConst());
+            if (a2Key.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
+            const auto &a = unfoldKey(aKey, ast.ast, ctx).name;
+            const auto &a2 = unfoldKey(a2Key, ast.ast, ctx).name;
+            const auto a3Key = ctx.pickRandomVar(scopeID, t2, ctx.pickConst());
+            if (a3Key.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto &a3 = unfoldKey(a3Key, ast.ast, ctx).name;
             globalVars.insert(a);
-            curr.fields = {
-                {a}, {ctx.pickRandomVar(scopeID, t1)}, {BINARY_OPS[op]}, {a2}};
+            curr.fields = {{a}, {a3}, {BINARY_OPS[op]}, {a2}};
             break;
         }
 
@@ -171,13 +199,15 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                 break;
             }
             TypeID t = slice[rng() % slice.size()];
-            auto a = ctx.pickRandomVar(scopeID, t);
-            if (a.empty()) {
+            const auto aKey = ctx.pickRandomVar(scopeID, t, false);
+            if (aKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            curr.fields = {
-                {a}, {UNARY_OPS[op]}, {ctx.pickRandomVar(scopeID, t)}};
+            const auto &a = unfoldKey(aKey, ast.ast, ctx).name;
+            const auto a2Key = ctx.pickRandomVar(scopeID, t, ctx.pickConst());
+            const auto &a2 = unfoldKey(a2Key, ast.ast, ctx).name;
+            curr.fields = {{a}, {UNARY_OPS[op]}, {a2}};
             globalVars.insert(a);
             break;
         }
@@ -220,7 +250,8 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
         for (auto it = globalVars.begin(); it != globalVars.end();) {
             bool found = false;
             for (VarID varID : scope.variables) {
-                const auto &varInfo = ast.ast.variables[varID];
+                const auto &varInfoKey = ast.ast.variables[varID];
+                const auto &varInfo = unfoldKey(varInfoKey, ast.ast, ctx);
                 if (varInfo.name == *it) {
                     it = globalVars.erase(it);
                     found = true;

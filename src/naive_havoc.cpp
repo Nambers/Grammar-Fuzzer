@@ -5,6 +5,7 @@
 #include <string>
 
 extern std::mt19937 rng;
+constexpr static std::size_t MAX_HAVOC_BYTES = 256;
 
 static void havoc_ascii(std::string &s, std::size_t max_bytes,
                         std::size_t rounds = 16) {
@@ -50,13 +51,16 @@ static void havoc_ascii(std::string &s, std::size_t max_bytes,
 }
 
 void havoc(std::string &quoted, std::size_t max_bytes,
-                  size_t max_havoc_rounds = 16) {
+           size_t max_havoc_rounds = 16) {
     if (quoted.size() < 2 || quoted.front() != '"' || quoted.back() != '"')
         return;
 
     std::string inner{quoted.begin() + 1, quoted.end() - 1};
 
     havoc_ascii(inner, max_bytes, max_havoc_rounds);
+    if (inner.size() > max_bytes) {
+        inner.resize(max_bytes);
+    }
 
     std::string escaped;
     escaped.reserve(inner.size() * 2);

@@ -28,7 +28,6 @@ enum class ASTNodeKind {
     DeclareVar,   // var a = ...
     Import,       // import x
                   // ---
-    Assign,       // x = y
     GetProp,      // z = x.y
     SetProp,      // x.y = z
     Call,         // z = y(x)
@@ -40,7 +39,7 @@ enum class ASTNodeKind {
 };
 
 constexpr ASTNodeKind DECL_NODE_END = ASTNodeKind::Import;
-constexpr ASTNodeKind EXEC_NODE_START = ASTNodeKind::Assign;
+constexpr ASTNodeKind EXEC_NODE_START = ASTNodeKind::GetProp;
 constexpr ASTNodeKind EXEC_NODE_END = ASTNodeKind::UnaryOp;
 
 class FunctionSignature {
@@ -63,6 +62,25 @@ class PropInfo {
 class ASTData; // forward declaration
 class AST;
 
+// avoid store ptr
+class PropKey {
+  public:
+    bool isBuiltin; // true -> builtinsProps
+    size_t idx = 999;
+    TypeID parentType = -1; // builtinProps[type]
+
+    inline bool empty() const { return idx == 999 && parentType == -1; }
+    inline bool operator==(const PropKey &other) const {
+        return isBuiltin == other.isBuiltin && idx == other.idx &&
+               parentType == other.parentType;
+    }
+    // empty static instance
+    inline static const PropKey &emptyKey() {
+        static const PropKey emptyKeyInstance{false, 999, -1};
+        return emptyKeyInstance;
+    }
+};
+
 class BuiltinContext {
   public:
     std::unordered_map<TypeID, std::vector<PropInfo>> builtinsProps = {};
@@ -74,7 +92,9 @@ class BuiltinContext {
     TypeID intID = -1;
     TypeID floatID = -1;
     TypeID boolID = -1;
-    // --- variable provider ---
+    std::discrete_distribution<bool> pickConstDist{
+        9, 1}; // 9:1 non-const and const
+               // --- variable provider ---
   public:
     // Build index for all scopes, merging parent scope and initializing
     // distributions
@@ -88,28 +108,23 @@ class BuiltinContext {
     // Pick a random type available in given scope (fallback to 0)
     TypeID pickRandomType(ScopeID scopeID);
 
+    bool pickConst();
+
     // Pick a random variable name by type, with fallback to object type (0)
-    std::string pickRandomVar(ScopeID scopeID, TypeID type);
+    PropKey pickRandomVar(ScopeID scopeID, TypeID type, bool isConst);
 
     // Pick a random variable of any type in given scope (including inherited
     // and object)
-    std::string pickRandomVar(ScopeID scopeID);
-    std::string pickRandomVar(ScopeID scopeID,
-                              const std::vector<TypeID> &types);
+    PropKey pickRandomVar(ScopeID scopeID, bool isConst);
+    PropKey pickRandomVar(ScopeID scopeID, const std::vector<TypeID> &types,
+                          bool isConst);
 
-    std::optional<PropInfo> pickRandomFunc(const AST &ast, ScopeID scopeID);
-    std::optional<PropInfo> pickRandomMethod(const AST &ast, TypeID tid);
+    PropKey pickRandomFunc(ScopeID scopeID);
+    PropKey pickRandomMethod(TypeID tid);
 
   private:
-    // avoid store ptr
-    class PropKey {
-      public:
-        bool isBuiltin; // true -> builtinsProps
-        size_t idx;
-        TypeID type; // builtinProps[type]
-    };
-
-    std::vector<std::unordered_map<TypeID, std::vector<std::string>>> index_;
+    std::vector<std::unordered_map<TypeID, std::vector<PropKey>>> constIndex_;
+    std::vector<std::unordered_map<TypeID, std::vector<PropKey>>> mutableIndex_;
 
     std::vector<std::vector<TypeID>> typeList_;
     std::vector<std::uniform_int_distribution<size_t>> typeDist_;
@@ -162,7 +177,8 @@ class AST {
     std::vector<ASTScope> scopes = {};
     std::vector<ASTNode> declarations = {};
     std::vector<ASTNode> expressions = {};
-    std::vector<PropInfo> variables = {};
+    // variables treated as parentType = -1(no parent), isBuiltin = false
+    std::vector<PropKey> variables = {};
     // we don't do normal function in fuzzing,
     // bc it is very unlikely to trigger bugs
     // std::vector<PropInfo> functions;
@@ -192,6 +208,18 @@ std::optional<PropInfo> getPropByName(const std::string &name,
                                       const std::vector<PropInfo> &slice,
                                       bool isCallable, ScopeID sid);
 void initPrimitiveTypes(BuiltinContext &ctx);
+inline const PropInfo &unfoldKey(const PropKey &key, const AST &ast,
+                                 const BuiltinContext &ctx) {
+    if (key.isBuiltin)
+        return ctx.builtinsProps.at(key.parentType).at(key.idx);
+    return ast.classProps.at(key.parentType).at(key.idx);
+}
+
+inline PropInfo &unfoldKey(const PropKey &key, AST &ast, BuiltinContext &ctx) {
+    if (key.isBuiltin)
+        return ctx.builtinsProps.at(key.parentType).at(key.idx);
+    return ast.classProps.at(key.parentType).at(key.idx);
+}
 }; // namespace FuzzingAST
 
 #endif // AST_HPP

@@ -32,6 +32,7 @@ in pkgs.mkShell {
     mold-wrapped
     nlohmann_json_custom
     ftxui
+    clang-tools
   ];
   shellHook = ''
     export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0;

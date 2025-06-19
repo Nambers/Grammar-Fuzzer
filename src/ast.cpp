@@ -23,6 +23,9 @@ const std::string &FuzzingAST::getTypeName(TypeID tid, const AST &ast,
 TypeID FuzzingAST::resolveType(const std::string &fullname,
                                const BuiltinContext &ctx, const AST &ast,
                                ScopeID sid) {
+    if (fullname.empty()) {
+        return -1;
+    }
     auto matches = [&](const std::string &t) {
         if (fullname == t)
             return true;

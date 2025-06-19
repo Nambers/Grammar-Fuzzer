@@ -48,9 +48,12 @@ trap 'cleanup; exit 0' SIGINT
 
 export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0
 export PYTHONWARNINGS=ignore
+export PYTHONUNBUFFERED=x
 
 LLVM_PROFILE_FILE="default_%p.profraw" $BUILD_COV_PATH/targets/CPython/CPythonCov &
 COV_PID=$!
+
+clear
 
 $BUILD_PATH/pyFuzzer -load-saved &
 FUZZ_PID=$!

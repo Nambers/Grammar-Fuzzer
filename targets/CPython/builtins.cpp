@@ -25,7 +25,6 @@ void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
         tmp.emplace(tid, bucket.value().get<std::vector<PropInfo>>());
     }
     ctx.builtinsProps.swap(tmp);
-    std::cout << "a" << std::endl;
     auto tmp2 = j["types"].get<std::vector<std::string>>();
     ctx.types.swap(tmp2);
     ctx.builtinTypesCnt = ctx.types.size();

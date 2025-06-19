@@ -38,6 +38,8 @@ UOPS = [operator.neg, operator.not_, operator.inv]
 def try_construct_dummy(cls):
     try:
         return cls()
+    except NameError:
+        return None
     except Exception:
         init = getattr(cls, "__init__", None) or getattr(cls, "__new__", None)
         if not init:
@@ -69,8 +71,9 @@ def convert_types_to_index(results: dict):
     def get_index(type_name: str) -> int:
         if (not type_name) or type_name == "-1":
             return -1
-        if getattr(builtins, type_name, None) is None:
-            return 0  # object
+        # allow non-registered types
+        # if getattr(builtins, type_name, None) is None:
+        #     return 0  # object
         if type_name not in idx_map:
             idx_map[type_name] = len(type_list)
             type_list.append(type_name)
@@ -84,7 +87,7 @@ def convert_types_to_index(results: dict):
                     get_index(t) for t in sig["funcSig"]["paramTypes"]
                 ]
                 sig["funcSig"]["returnType"] = get_index(sig["funcSig"]["returnType"])
-                sig["funcSig"]["selfType"] = get_index(sig["funcSig"]["selfType"] or "")
+                sig["funcSig"]["selfType"] = get_index(sig["funcSig"]["selfType"])
             else:
                 sig["type"] = get_index(sig["type"])
             real_results["funcs"][get_index(name)].append(sig)
@@ -110,7 +113,7 @@ if __name__ == "__main__":
     constructors = []
 
     for name in results["types"]:
-        cls = getattr(builtins, name)
+        cls = getattr(builtins, name, None)
         constructors.append(cls)
 
     instances = [try_construct_dummy(ctor) for ctor in constructors]

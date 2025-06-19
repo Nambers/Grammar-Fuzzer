@@ -38,28 +38,23 @@ uint32_t corpusSize = 0;
 
 std::mt19937 rng(std::random_device{}());
 
-static int testOneInput(const ASTData &data, BuiltinContext &ctx) {
+static int testOneInput(ASTData &data, BuiltinContext &ctx) {
     data_backup = nlohmann::json(data.ast).dump();
     auto tmp = getInitExecutionContext();
     return runAST(data.ast, ctx, tmp);
 }
 
-void print_backtrace() {
-    void *buffer[100];
-    int nptrs = backtrace(buffer, 100);
-    char **strings = backtrace_symbols(buffer, nptrs);
-    if (strings) {
-        std::cerr << "=== Backtrace ===\n";
-        for (int i = 0; i < nptrs; ++i)
-            std::cerr << strings[i] << "\n";
-        std::cerr << "=================\n";
-        free(strings);
-    }
+extern "C" void __sanitizer_print_stack_trace();
+
+static void print_backtrace() {
+    WRITE_STDERR("\n=== Backtrace ===\n");
+    __sanitizer_print_stack_trace();
+    WRITE_STDERR("==================\n");
 }
 
 static void crash_handler() {
-    WRITE_STDERR("crash! last saved states\n");
-    WRITE_STDOUT("AST=");
+    WRITE_STDERR("crash! last saved states:");
+    WRITE_STDOUT("\n===AST===\n");
     WRITE_STDOUT(data_backup.c_str());
     WRITE_STDOUT(data_backup2.c_str());
     fuzzerEmitCacheCorpus();
@@ -68,7 +63,7 @@ static void crash_handler() {
         std::ofstream out("corpus/saved/" + std::to_string(cnt++) + ".json");
         out << nlohmann::json(data.ast).dump();
     }
-    print_backtrace();
+    // backtrace already printed by sanitizer
     _exit(1);
 }
 
@@ -76,6 +71,7 @@ static void sigint_handler(int signo) {
     WRITE_STDERR("crash! sig=");
     WRITE_STDERR(strsignal(signo));
     WRITE_STDERR("\n");
+    print_backtrace();
     crash_handler();
     std::_Exit(130);
 }
@@ -86,13 +82,17 @@ void myTerminateHandler() {
         try {
             std::rethrow_exception(eptr);
         } catch (const std::exception &e) {
-            ERROR("Unhandled exception: {}", e.what());
+            WRITE_STDERR("Unhandled exception:");
+            WRITE_STDERR(e.what());
+            WRITE_STDERR("\n");
         } catch (...) {
-            ERROR("Unhandled non-std exception");
+            WRITE_STDERR("Unhandled non-std exception\n");
         }
     } else {
-        ERROR("Terminate called without an active exception");
+        WRITE_STDERR("Terminate called without an active exception\n");
     }
+    print_backtrace();
+    crash_handler();
     std::abort();
 }
 
@@ -161,10 +161,11 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
             data_backup += data_backup2;
             data_backup2.clear();
             updateTypes(globalVars, ast, ctx, execCtx);
-            scheduler.ctx.update(ast);
+            scheduler.ctx.updateVars(ast);
             history.push_back(data);
         } else if (ret == -1) {
-            // TODO
+            // update index to match with fixed result
+            scheduler.ctx.update(ast);
         } else if (ret == -2) {
             // timeout
             execCtx = getInitExecutionContext();

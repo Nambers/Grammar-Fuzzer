@@ -10,38 +10,47 @@ using namespace FuzzingAST;
 
 void BuiltinContext::updateVars(const ASTData &ast) {
     size_t n = ast.ast.scopes.size();
-    index_.assign(n, {});
+    mutableIndex_.assign(n, {});
+    constIndex_.assign(n, {});
     typeList_.assign(n, {});
     typeDist_.assign(n, {});
     varDist_.assign(n, {});
 
     for (size_t i = 0; i < n; ++i) {
-        // 1) 继承父 scope 的映射
         if (int p = ast.ast.scopes[i].parent; p != -1) {
-            index_[i] = index_[p];
+            mutableIndex_[i] = mutableIndex_[p];
+            constIndex_[i] = constIndex_[p];
         }
 
-        // 2) 把 ASTData::ast.variables 中 scope==i 的属性（变量/函数）插入
-        for (size_t vid = 0; vid < ast.ast.variables.size(); ++vid) {
-            const auto &pi = ast.ast.variables[vid];
-            if (pi.scope != (ScopeID)i)
-                continue;
-            index_[i][pi.type].push_back(pi.name);
-            index_[i][0].push_back(pi.name); // type=0 as fallback
-        }
+        for (const auto &[tid, pis] : ast.ast.classProps) {
+            for (size_t j = 0; j < pis.size(); ++j) {
+                const auto &pi = pis[j];
+                if (pi.scope > (ScopeID)i)
+                    continue;
 
-        // 3) 把 builtinsProps 全部也加入（所有 scope 都可见）
-        for (auto &kv : builtinsProps) {
-            TypeID t = kv.first;
-            for (auto &pi : kv.second) {
-                index_[i][t].push_back(pi.name);
-                index_[i][0].push_back(pi.name);
+                auto &index = pi.isConst ? constIndex_ : mutableIndex_;
+                index[i][pi.type].emplace_back(false, j, tid);
+                index[i][0].emplace_back(false, j, tid); // fallback
             }
         }
 
-        // 4) 构建 typeList_, typeDist_，和 varDist_
+        for (auto &kv : builtinsProps) {
+            TypeID parentType = kv.first;
+            const auto &pis = kv.second;
+            for (size_t j = 0; j < pis.size(); ++j) {
+                const auto &pi = pis[j];
+                auto &index = pi.isConst ? constIndex_ : mutableIndex_;
+                index[i][pi.type].emplace_back(true, j, parentType);
+                index[i][0].emplace_back(true, j, parentType); // fallback
+            }
+        }
+
         auto &types = typeList_[i];
-        for (auto &kv : index_[i]) {
+        for (auto &kv : mutableIndex_[i]) {
+            // only interested with those types can be interacted with
+            if (!builtinsProps.contains(kv.first) &&
+                !ast.ast.classProps.contains(kv.first))
+                continue;
             if (!kv.second.empty())
                 types.push_back(kv.first);
         }
@@ -49,7 +58,7 @@ void BuiltinContext::updateVars(const ASTData &ast) {
             typeDist_[i] =
                 std::uniform_int_distribution<size_t>(0, types.size() - 1);
             for (auto t : types) {
-                auto &bucket = index_[i][t];
+                auto &bucket = mutableIndex_[i][t];
                 varDist_[i][t] =
                     std::uniform_int_distribution<size_t>(0, bucket.size() - 1);
             }
@@ -63,12 +72,32 @@ void BuiltinContext::updateFuncs(const ASTData &ast) {
     funcList_.assign(n, {});
     funcDist_.assign(n, {});
     funcCnts_.assign(n, 0);
+    methodDist_.clear();
+
+    for (auto &[tid, props] : builtinsProps) {
+        if (methodDist_.find(tid) == methodDist_.end()) {
+            size_t s = props.size();
+            if (ast.ast.classProps.contains(tid))
+                s += ast.ast.classProps.at(tid).size();
+            if (s)
+                methodDist_.emplace(
+                    tid, std::uniform_int_distribution<size_t>(0, s - 1));
+        }
+    }
+
+    for (auto &[tid, props] : ast.ast.classProps) {
+        if (methodDist_.contains(tid))
+            continue; // already added in builtinsProps
+        size_t s = props.size();
+        if (s)
+            methodDist_.emplace(
+                tid, std::uniform_int_distribution<size_t>(0, s - 1));
+    }
 
     for (size_t i = 0; i < n; ++i) {
         std::vector<PropKey> cands;
         cands.reserve(128);
 
-        // 1) AST::classProps 里所有作用域可见的方法
         for (auto &kv : ast.ast.classProps) {
             TypeID tid = kv.first;
             auto &vec = kv.second;
@@ -80,7 +109,6 @@ void BuiltinContext::updateFuncs(const ASTData &ast) {
             }
         }
 
-        // 2) 全部内建方法
         for (auto &kv : builtinsProps) {
             TypeID tid = kv.first;
             auto &vec = kv.second;
@@ -100,7 +128,7 @@ void BuiltinContext::updateFuncs(const ASTData &ast) {
     }
 }
 
-/*------------------ pickRandomVar 相关 ------------------*/
+/*------------------ pickRandomVar ------------------*/
 TypeID BuiltinContext::pickRandomType(ScopeID scopeID) {
     const auto &types = typeList_[scopeID];
     if (types.empty())
@@ -108,75 +136,64 @@ TypeID BuiltinContext::pickRandomType(ScopeID scopeID) {
     return types[typeDist_[scopeID](rng)];
 }
 
-std::string BuiltinContext::pickRandomVar(ScopeID scopeID, TypeID type) {
-    const auto &mp = index_[scopeID];
+PropKey BuiltinContext::pickRandomVar(ScopeID scopeID, TypeID type,
+                                      bool isConst) {
+    const auto &mp = (isConst ? constIndex_ : mutableIndex_)[scopeID];
     if (type == 0) {
         if (mp.empty())
-            return {};
-        std::uniform_int_distribution<size_t> d(0, mp.size() - 1);
-        auto it = mp.begin();
-        std::advance(it, d(rng));
-        type = it->first;
+            return PropKey::emptyKey();
+        type = pickRandomType(scopeID);
+        if (type == 0)
+            return PropKey::emptyKey();
     }
+
     auto mit = mp.find(type);
     if (mit == mp.end() || mit->second.empty())
-        return {};
+        return PropKey::emptyKey();
+
     const auto &bucket = mit->second;
-    return bucket[varDist_.at(scopeID).at(type)(rng)];
+    return bucket[varDist_[scopeID][type](rng)];
 }
 
-std::string BuiltinContext::pickRandomVar(ScopeID scopeID) {
-    return pickRandomVar(scopeID, pickRandomType(scopeID));
+PropKey BuiltinContext::pickRandomVar(ScopeID scopeID, bool isConst) {
+    return pickRandomVar(scopeID, pickRandomType(scopeID), isConst);
 }
 
-std::string BuiltinContext::pickRandomVar(ScopeID scopeID,
-                                          const std::vector<TypeID> &types) {
+PropKey BuiltinContext::pickRandomVar(ScopeID scopeID,
+                                      const std::vector<TypeID> &types,
+                                      bool isConst) {
     if (types.empty())
-        return {};
+        return PropKey::emptyKey();
     TypeID t = types[rng() % types.size()];
-    return pickRandomVar(scopeID, t);
+    return pickRandomVar(scopeID, t, isConst);
 }
 
 /*------------------ pickRandomMethod ------------------*/
-std::optional<PropInfo> BuiltinContext::pickRandomFunc(const AST &ast,
-                                                       ScopeID scopeID) {
-    // 越界或空直接空
+PropKey BuiltinContext::pickRandomFunc(ScopeID scopeID) {
+
     if (scopeID >= funcList_.size())
-        return std::nullopt;
+        return PropKey::emptyKey();
     const auto &lst = funcList_[scopeID];
     if (lst.empty())
-        return std::nullopt;
+        return PropKey::emptyKey();
 
     size_t pick = funcDist_[scopeID](rng);
-    const auto &key = lst[pick];
-
-    if (key.isBuiltin) {
-        const auto &vec = builtinsProps.at(key.type);
-        return vec[key.idx];
-    } else {
-        const auto &vec = ast.classProps.at(key.type);
-        return vec[key.idx];
-    }
+    return lst[pick];
 }
 
-std::optional<PropInfo> BuiltinContext::pickRandomMethod(const AST &ast,
-                                                         TypeID tid) {
+PropKey BuiltinContext::pickRandomMethod(TypeID tid) {
     auto itD = methodDist_.find(tid);
     if (itD == methodDist_.end())
-        return std::nullopt;
+        return PropKey::emptyKey();
 
     size_t idx = itD->second(rng);
-    // 先尝试 builtinsProps
+
     if (auto itB = builtinsProps.find(tid); itB != builtinsProps.end()) {
         if (idx < itB->second.size())
-            return itB->second[idx];
+            return PropKey{true, idx, tid};
         idx -= itB->second.size();
     }
-    // 再尝试 AST classProps
-    if (auto itC = ast.classProps.find(tid); itC != ast.classProps.end()) {
-        const auto &vec = itC->second;
-        if (idx < vec.size())
-            return vec[idx];
-    }
-    return std::nullopt;
+    return {false, idx, tid};
 }
+
+bool FuzzingAST::BuiltinContext::pickConst() { return pickConstDist(rng); }

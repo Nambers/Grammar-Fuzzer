@@ -65,7 +65,6 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ASTNodeKind,
                               {ASTNodeKind::Class, "Class"},
                               {ASTNodeKind::DeclareVar, "DeclareVar"},
                               {ASTNodeKind::Import, "Import"},
-                              {ASTNodeKind::Assign, "Assign"},
                               {ASTNodeKind::GetProp, "GetProp"},
                               {ASTNodeKind::SetProp, "SetProp"},
                               {ASTNodeKind::Call, "Call"},
@@ -75,6 +74,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ASTNodeKind,
                               {ASTNodeKind::GlobalRef, "GlobalRef"}});
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(FunctionSignature, paramTypes, selfType,
                                    returnType);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PropKey, isBuiltin, idx, parentType);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(PropInfo, type, name,
                                                 isCallable, isConst, scope,
                                                 funcSig);
