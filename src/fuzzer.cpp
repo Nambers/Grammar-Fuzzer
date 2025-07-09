@@ -29,7 +29,7 @@ extern "C" void __sanitizer_set_death_callback(void (*)(void));
 extern std::vector<std::string> FuzzingAST::cacheCorpus;
 
 std::string data_backup;
-static std::string data_backup2;
+std::string data_backup2;
 static size_t totalRounds = 0;
 static FuzzSchedulerState scheduler;
 uint32_t newEdgeCnt = 0;
@@ -126,16 +126,17 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
     // update also fix the incorrect funcSignatures
     ASTScope &scope = ast.ast.scopes[0];
     std::vector<ASTNode> history;
-    history.reserve(200);
 
     std::unordered_set<std::string> globalVars;
     auto execCtx = getInitExecutionContext();
     data_backup2.clear();
     data_backup = nlohmann::json(ast.ast).dump() + "\n---DECL_END---\n";
+    const auto declRet = runLines(history, ast.ast, ctx, execCtx);
     // get declarations
-    if (runLines(history, ast.ast, ctx, execCtx) != 0) {
-        PANIC("Failed to run declarations.");
+    if (declRet != 0) {
+        PANIC("Failed to run declarations.code={}", declRet);
     };
+    history.reserve(200);
     const auto sizeTmp = ast.ast.scopes[0].declarations.size();
     while (scheduler.noEdgeCount <= scheduler.execFailureThreshold() &&
            history.size() < 200) {
@@ -161,11 +162,11 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
             data_backup += data_backup2;
             data_backup2.clear();
             updateTypes(globalVars, ast, ctx, execCtx);
-            scheduler.ctx.updateVars(ast);
+            scheduler.ctx.updateVars(ast.ast);
             history.push_back(data);
         } else if (ret == -1) {
             // update index to match with fixed result
-            scheduler.ctx.update(ast);
+            scheduler.ctx.update(ast.ast);
         } else if (ret == -2) {
             // timeout
             execCtx = getInitExecutionContext();
@@ -204,7 +205,7 @@ void FuzzingAST::fuzzerDriver() {
         }
     }
     corpusSize = scheduler.corpus.size();
-    scheduler.ctx.update(scheduler.corpus[scheduler.idx]);
+    scheduler.ctx.update(scheduler.corpus[scheduler.idx].ast);
     newEdgeCnt = 0; // reset edge count
     cacheCorpus.reserve(MAX_CACHE_SIZE);
     TUI::initTUI();
@@ -216,7 +217,8 @@ void FuzzingAST::fuzzerDriver() {
         case MutationPhase::ExecutionGeneration: {
             // continue generation on current
             const auto cacheNewEdgeCnt = newEdgeCnt;
-            ASTData newData = scheduler.corpus[scheduler.idx];
+            ASTData newData = scheduler.corpus.at(scheduler.idx);
+            scheduler.ctx.update(newData.ast);
             auto lines = testInputStream(newData, scheduler);
             if (cacheNewEdgeCnt < newEdgeCnt) {
                 // got new edge
@@ -249,7 +251,8 @@ void FuzzingAST::fuzzerDriver() {
                                        scheduler.idx);
                 scheduler.idx = rng() % (scheduler.corpus.size() / 2);
                 scheduler.update(
-                    0, scheduler.corpus[scheduler.idx].ast.declarations.size());
+                    0,
+                    scheduler.corpus.at(scheduler.idx).ast.declarations.size());
                 newEdgeCnt = 0;
                 break;
             }
@@ -258,7 +261,7 @@ void FuzzingAST::fuzzerDriver() {
         case MutationPhase::DeclarationMutation: {
             newEdgeCnt = 0; // reset edge count for declaration change
             // continue mutating on current
-            ASTData newData = scheduler.corpus[scheduler.idx];
+            ASTData newData = scheduler.corpus.at(scheduler.idx);
             mutate_declaration(newData, scheduler.ctx);
             newData.ast.expressions.clear();
             generate_execution(newData, scheduler.ctx);

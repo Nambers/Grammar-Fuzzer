@@ -19,6 +19,7 @@
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
+#include <unordered_set>
 
 using namespace FuzzingAST;
 
@@ -227,39 +228,45 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
 #endif
     // fix builtin sig dynamically
     if (PyErr_GivenExceptionMatches(exc.get(), PyExc_TypeError)) {
+        bool handled = false;
         const static std::string badUnaryOp("bad operand type for unary ");
         const static std::string noAttr(" has no attribute ");
         const static std::string badDescriptor("descriptor ");
-        if (errMsg.starts_with(badUnaryOp)) {
+        if (errMsg.starts_with(badUnaryOp) && !handled) {
             // e.g. bad operand type for unary ~: 'str'
             auto colonPos = errMsg.find(':');
-            if (colonPos == std::string::npos)
-                return;
-            std::string opName = errMsg.substr(badUnaryOp.length(),
-                                               colonPos - badUnaryOp.length());
+            if (colonPos != std::string::npos) {
+                std::string opName = errMsg.substr(
+                    badUnaryOp.length(), colonPos - badUnaryOp.length());
 
-            std::string targetType = getQuoteText(errMsg, ++colonPos);
+                std::string targetType = getQuoteText(errMsg, ++colonPos);
 
-            auto opIt = std::find(UNARY_OPS.begin(), UNARY_OPS.end(), opName);
-            if (opIt == UNARY_OPS.end())
-                return;
-            auto &op = ctx.unaryOps[opIt - UNARY_OPS.begin()];
+                auto opIt =
+                    std::find(UNARY_OPS.begin(), UNARY_OPS.end(), opName);
+                if (opIt != UNARY_OPS.end()) {
+                    auto &op = ctx.unaryOps[opIt - UNARY_OPS.begin()];
 
-            auto typeIt =
-                std::find(ctx.types.begin(), ctx.types.end(), targetType);
-            if (typeIt == ctx.types.end())
-                return;
-            TypeID typeID = typeIt - ctx.types.begin();
+                    auto typeIt = std::find(ctx.types.begin(), ctx.types.end(),
+                                            targetType);
+                    if (typeIt != ctx.types.end()) {
+                        TypeID typeID = typeIt - ctx.types.begin();
 
-            auto found = std::find(op.begin(), op.end(), typeID);
-            if (found != op.end()) {
-                op.erase(found);
-                INFO("Removed typeID {} from unary op '{}'", typeID, opName);
-            } else {
-                // INFO("TypeID {} not found in op '{}', nothing to remove",
-                //      typeID, opName);
+                        auto found = std::find(op.begin(), op.end(), typeID);
+                        if (found != op.end()) {
+                            op.erase(found);
+                            INFO("Removed typeID {} from unary op '{}'", typeID,
+                                 opName);
+                        } else {
+                            // INFO("TypeID {} not found in op '{}', nothing to
+                            // remove",
+                            //      typeID, opName);
+                        }
+                        handled = true;
+                    }
+                }
             }
-        } else if (errMsg.contains(noAttr)) {
+        }
+        if (errMsg.contains(noAttr) && !handled) {
             // e.g. 'dict' object has no attribute 'find'
             size_t pos = 0;
             std::string typeName = getQuoteText(errMsg, pos);
@@ -267,6 +274,7 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
             if (tid <= 0) {
                 // extracted type in errMsg can be inaccurate (like base class
                 // name)
+                handled = true;
                 std::string obj = "";
                 if (node->kind == ASTNodeKind::Call) {
                     obj = std::get<std::string>(node->fields[0].val);
@@ -277,7 +285,8 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                 } else if (node->kind == ASTNodeKind::SetProp) {
                     obj = std::get<std::string>(node->fields[0].val);
                     obj = obj.substr(0, obj.find('.'));
-                }
+                } else
+                    handled = false;
                 // TODO
                 // if (!obj.empty()) {
                 //     // find correct type in variables
@@ -291,8 +300,7 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                 //         tid = it->type;
                 //     }
                 // }
-            }
-            if (tid > 0) {
+            } else {
                 std::string attrName = getQuoteText(errMsg, ++pos);
                 auto &props = tid < ctx.builtinTypesCnt ? ctx.builtinsProps[tid]
                                                         : ast.classProps[tid];
@@ -305,12 +313,72 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                     // remove the property
                     props.erase(it);
                     INFO("Removed property '{}' from typeID {}", attrName, tid);
+                    handled = true;
                 }
             }
-        } else if (errMsg.starts_with(badDescriptor)) {
+        }
+        if (errMsg.starts_with(badDescriptor) && !handled) {
             // e.g. descriptor '__rand__' requires a 'bool' object but received
             // a 'str'
             // TODO
+        }
+        if (errMsg.contains(" argument ") && errMsg.contains(" must be ") &&
+            !handled) {
+            // e.g. replace() argument 1 must be str, not None
+            size_t pos = errMsg.find(" argument ") + strlen(" argument ");
+            size_t argNum = strtol(errMsg.c_str() + pos, nullptr, 10);
+            pos = errMsg.find(" must be ", pos) + strlen(" must be ");
+            size_t end = errMsg.find(',', pos);
+            std::string expType = errMsg.substr(pos, end - pos);
+            if (!expType.contains(' ')) {
+                // 0 is ret val name, 1 is func name
+                const std::string &funcName =
+                    std::get<std::string>(node->fields[1].val);
+                const auto p = funcName.find('.');
+                if (p != std::string::npos) {
+                    const std::string &typeName = funcName.substr(0, p);
+                    const std::string &methodName = funcName.substr(p + 1);
+                    TypeID tid = resolveType(typeName, ctx, ast, 0);
+                    if (tid > 0) {
+                        auto &methods = tid < ctx.builtinTypesCnt
+                                            ? ctx.builtinsProps[tid]
+                                            : ast.classProps[tid];
+                        auto it =
+                            std::find_if(methods.begin(), methods.end(),
+                                         [&methodName](const PropInfo &prop) {
+                                             return prop.name == methodName;
+                                         });
+                        if (it != methods.end()) {
+                            it->funcSig.paramTypes[argNum - 1] =
+                                resolveType(expType, ctx, ast, 0);
+                            INFO("Updated method '{}' for expected "
+                                 "type '{}'({}) for argument {}",
+                                 methodName, expType, tid, argNum);
+                        }
+                    }
+                } else {
+                    // no designed parent type, we only search in builtins
+                    // caused custom func should already has type.
+                    auto it = std::find_if(ctx.builtinsProps.at(-1).begin(),
+                                           ctx.builtinsProps.at(-1).end(),
+                                           [&funcName](const auto &info) {
+                                               return info.name == funcName;
+                                           });
+                    if (it != ctx.builtinsProps.at(-1).end()) {
+                        const auto tid = resolveType(expType, ctx, ast, 0);
+                        it->funcSig.paramTypes[argNum - 1] = tid;
+                        INFO("Updated function '{}' with expected type "
+                             "'{}'({}) for "
+                             "argument {}",
+                             funcName, expType, tid, argNum);
+                    } else {
+                        WARN("Failed to find function '{}' in builtins",
+                             funcName);
+                    }
+                }
+                handled = true;
+            }
+            // otherwise is not this template error
         }
         // TODO
     }
@@ -384,6 +452,8 @@ static inline int runASTStr(const std::string &re, const AST &ast,
     if (echo) {
         std::cout << "[Generated Python]:\n" << re << "\n";
     }
+    // TODO somewhere forgot to clear pyErr.
+    PyErr_Clear();
 
     PyObjectPtr code(Py_CompileString(re.c_str(), "<ast>", Py_file_input));
     if (PyErr_Occurred()) {
@@ -513,14 +583,32 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
             tmpMethods[typeID].push_back(item.get<PropInfo>());
         }
     }
-    ast.classProps.swap(tmpMethods);
+
+    // TODO current just insert anything news bc the classProps is both managed
+    // by manually and auto.
+    for (auto &[tid, vec] : tmpMethods) {
+        auto vec1 = ast.classProps[tid];
+        if (vec1.empty()) {
+            vec1.swap(vec);
+            continue;
+        }
+        std::unordered_set<PropInfo, PropInfo::Hash> set1(vec1.begin(),
+                                                          vec1.end());
+        for (const auto &item : vec) {
+            if (set1.contains(item)) {
+                vec1.push_back(item);
+            }
+        }
+    }
 
     auto types = j["types"].get<std::vector<std::string>>();
     for (size_t i = 0; i < types.size(); ++i) {
+        // discovered new type
         if (resolveType(types[i], ctx, ast, sid) == 0 && types[i] != "object") {
             scope.types.push_back(types[i]);
         }
     }
+    ctx.update(ast);
     return 0;
 }
 
@@ -548,23 +636,25 @@ void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
             ERROR("Variable '{}' not found in execution context", varName);
             continue;
         }
-        if (!PyUnicode_Check(var)) {
-            ERROR("Variable '{}' is not a string", varName);
-            continue;
-        }
         std::string typeStr(Py_TYPE(var)->tp_name);
-        TypeID typeID = resolveType(typeStr, ctx, ast.ast, 0);
-        if (typeID == 0) {
-            WARN("Failed to resolve type '{}' for variable '{}'", typeStr,
-                 varName);
-        }
-        // update type
-        for (VarID varID : ast.ast.scopes[0].variables) {
-            const auto &varInfoKey = ast.ast.variables[varID];
-            auto &varInfo = unfoldKey(varInfoKey, ast.ast, ctx);
-            if (varInfo.name == varName) {
-                varInfo.type = typeID;
+        if (typeStr != "object") {
+            if (typeStr == "builtin_function_or_method") {
+                // callable
                 continue;
+            }
+            TypeID typeID = resolveType(typeStr, ctx, ast.ast, 0);
+            if (typeID == 0) {
+                WARN("Failed to resolve type '{}' for variable '{}'", typeStr,
+                     varName);
+            }
+            // update type
+            for (VarID varID : ast.ast.scopes[0].variables) {
+                auto &varInfo =
+                    unfoldKey(ast.ast.variables.at(varID), ast.ast, ctx);
+                if (varInfo.name == varName) {
+                    varInfo.type = typeID;
+                    continue;
+                }
             }
         }
     }

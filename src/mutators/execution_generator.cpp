@@ -80,7 +80,8 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
             }
 
             curr.fields = {{v1.name}, {v2.name}};
-            globalVars.insert(v1.name);
+            if (!v1.isConst)
+                globalVars.insert(v1.name);
             break;
         }
 
@@ -108,32 +109,49 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                     globalVars.insert(retVar);
                 }
             }
-            if (sig.selfType != -1) {
-                // if it's a method, add self as first parameter
-                const auto selfVarKey =
-                    ctx.pickRandomVar(scopeID, sig.selfType, false);
-                if (selfVarKey.empty()) {
-                    state = MutationState::STATE_REROLL;
-                    break;
+            if (funcKey.parentType != -1) {
+                if (sig.selfType != -1) {
+                    // if it's a method, add self as first parameter
+                    const auto selfVarKey =
+                        ctx.pickRandomVar(scopeID, sig.selfType, false);
+                    if (selfVarKey.empty()) {
+                        state = MutationState::STATE_REROLL;
+                        break;
+                    }
+                    const auto &selfVar =
+                        unfoldKey(selfVarKey, ast.ast, ctx).name;
+                    globalVars.insert(selfVar);
+                    // xxx.yyy(...)
+                    curr.fields[1] = {selfVar + '.' + fname};
+                    // or static usage: yyy(xxx, ...)
+                    // curr.fields.push_back({selfVar});
+                } else {
+                    // static method
+                    curr.fields[1] = {
+                        getTypeName(funcKey.parentType, ast.ast, ctx) + '.' +
+                        fname};
                 }
-                const auto &selfVar = unfoldKey(selfVarKey, ast.ast, ctx).name;
-                globalVars.insert(selfVar);
-                curr.fields[1] = {selfVar + '.' + fname};
-                // static usage
-                // curr.fields.push_back({selfVar});
             }
+
             // parameters
-            for (auto paramType : sig.paramTypes) {
+            for (auto i = 0; i < sig.paramTypes.size(); ++i) {
+                auto paramType = sig.paramTypes[i];
                 const auto paramVarKey =
                     ctx.pickRandomVar(scopeID, paramType, ctx.pickConst());
                 if (paramVarKey.empty()) {
                     state = MutationState::STATE_REROLL;
                     break;
                 }
-                const auto &paramVar =
-                    unfoldKey(paramVarKey, ast.ast, ctx).name;
-                globalVars.insert(paramVar);
-                curr.fields.emplace_back(paramVar);
+                if (paramVarKey.parentType != -1) {
+                    // need to find an instance
+                    // TODO
+                    --i;
+                    continue;
+                }
+                const auto &paramVar = unfoldKey(paramVarKey, ast.ast, ctx);
+                if (!paramVar.isConst)
+                    globalVars.insert(paramVar.name);
+                curr.fields.emplace_back(paramVar.name);
             }
             break;
         }
@@ -178,7 +196,7 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto &a = unfoldKey(aKey, ast.ast, ctx).name;
+            const auto &a = unfoldKey(aKey, ast.ast, ctx);
             const auto &a2 = unfoldKey(a2Key, ast.ast, ctx).name;
             const auto a3Key = ctx.pickRandomVar(scopeID, t2, ctx.pickConst());
             if (a3Key.empty()) {
@@ -186,8 +204,9 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                 break;
             }
             const auto &a3 = unfoldKey(a3Key, ast.ast, ctx).name;
-            globalVars.insert(a);
-            curr.fields = {{a}, {a3}, {BINARY_OPS[op]}, {a2}};
+            if (!a.isConst)
+                globalVars.insert(a.name);
+            curr.fields = {{a.name}, {a3}, {BINARY_OPS[op]}, {a2}};
             break;
         }
 
@@ -204,11 +223,16 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto &a = unfoldKey(aKey, ast.ast, ctx).name;
+            const auto &a = unfoldKey(aKey, ast.ast, ctx);
             const auto a2Key = ctx.pickRandomVar(scopeID, t, ctx.pickConst());
+            if (a2Key.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
             const auto &a2 = unfoldKey(a2Key, ast.ast, ctx).name;
-            curr.fields = {{a}, {UNARY_OPS[op]}, {a2}};
-            globalVars.insert(a);
+            curr.fields = {{a.name}, {UNARY_OPS[op]}, {a2}};
+            if (!a.isConst)
+                globalVars.insert(a.name);
             break;
         }
 
@@ -250,7 +274,7 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
         for (auto it = globalVars.begin(); it != globalVars.end();) {
             bool found = false;
             for (VarID varID : scope.variables) {
-                const auto &varInfoKey = ast.ast.variables[varID];
+                const auto &varInfoKey = ast.ast.variables.at(varID);
                 const auto &varInfo = unfoldKey(varInfoKey, ast.ast, ctx);
                 if (varInfo.name == *it) {
                     it = globalVars.erase(it);

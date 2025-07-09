@@ -14,8 +14,8 @@ Syntax aware token/source codes text mutation based fuzzer.
 ## Targets
 
 - CPython
-- JavaScript
-- LUA
+- JavaScript TODO
+- LUA TODO
 - etc.
 
 ## Previous works

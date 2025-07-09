@@ -8,8 +8,8 @@ extern std::mt19937 rng;
 
 using namespace FuzzingAST;
 
-void BuiltinContext::updateVars(const ASTData &ast) {
-    size_t n = ast.ast.scopes.size();
+void BuiltinContext::updateVars(const AST &ast) {
+    size_t n = ast.scopes.size();
     mutableIndex_.assign(n, {});
     constIndex_.assign(n, {});
     typeList_.assign(n, {});
@@ -17,15 +17,15 @@ void BuiltinContext::updateVars(const ASTData &ast) {
     varDist_.assign(n, {});
 
     for (size_t i = 0; i < n; ++i) {
-        if (int p = ast.ast.scopes[i].parent; p != -1) {
+        if (int p = ast.scopes[i].parent; p != -1) {
             mutableIndex_[i] = mutableIndex_[p];
             constIndex_[i] = constIndex_[p];
         }
 
-        for (const auto &[tid, pis] : ast.ast.classProps) {
+        for (const auto &[tid, pis] : ast.classProps) {
             for (size_t j = 0; j < pis.size(); ++j) {
                 const auto &pi = pis[j];
-                if (pi.scope > (ScopeID)i)
+                if (pi.scope > static_cast<ScopeID>(i))
                     continue;
 
                 auto &index = pi.isConst ? constIndex_ : mutableIndex_;
@@ -34,7 +34,7 @@ void BuiltinContext::updateVars(const ASTData &ast) {
             }
         }
 
-        for (auto &kv : builtinsProps) {
+        for (const auto &kv : builtinsProps) {
             TypeID parentType = kv.first;
             const auto &pis = kv.second;
             for (size_t j = 0; j < pis.size(); ++j) {
@@ -46,10 +46,10 @@ void BuiltinContext::updateVars(const ASTData &ast) {
         }
 
         auto &types = typeList_[i];
-        for (auto &kv : mutableIndex_[i]) {
+        for (const auto &kv : mutableIndex_[i]) {
             // only interested with those types can be interacted with
             if (!builtinsProps.contains(kv.first) &&
-                !ast.ast.classProps.contains(kv.first))
+                !ast.classProps.contains(kv.first))
                 continue;
             if (!kv.second.empty())
                 types.push_back(kv.first);
@@ -58,17 +58,18 @@ void BuiltinContext::updateVars(const ASTData &ast) {
             typeDist_[i] =
                 std::uniform_int_distribution<size_t>(0, types.size() - 1);
             for (auto t : types) {
-                auto &bucket = mutableIndex_[i][t];
-                varDist_[i][t] =
-                    std::uniform_int_distribution<size_t>(0, bucket.size() - 1);
+                varDist_[i][t] = {std::uniform_int_distribution<size_t>(
+                                      0, mutableIndex_[i][t].size() - 1),
+                                  std::uniform_int_distribution<size_t>(
+                                      0, constIndex_[i][t].size() - 1)};
             }
         }
     }
 }
 
 /*------------------ updateFuncs ------------------*/
-void BuiltinContext::updateFuncs(const ASTData &ast) {
-    size_t n = ast.ast.scopes.size();
+void BuiltinContext::updateFuncs(const AST &ast) {
+    size_t n = ast.scopes.size();
     funcList_.assign(n, {});
     funcDist_.assign(n, {});
     funcCnts_.assign(n, 0);
@@ -77,15 +78,15 @@ void BuiltinContext::updateFuncs(const ASTData &ast) {
     for (auto &[tid, props] : builtinsProps) {
         if (methodDist_.find(tid) == methodDist_.end()) {
             size_t s = props.size();
-            if (ast.ast.classProps.contains(tid))
-                s += ast.ast.classProps.at(tid).size();
+            if (ast.classProps.contains(tid))
+                s += ast.classProps.at(tid).size();
             if (s)
                 methodDist_.emplace(
                     tid, std::uniform_int_distribution<size_t>(0, s - 1));
         }
     }
 
-    for (auto &[tid, props] : ast.ast.classProps) {
+    for (const auto &[tid, props] : ast.classProps) {
         if (methodDist_.contains(tid))
             continue; // already added in builtinsProps
         size_t s = props.size();
@@ -98,7 +99,7 @@ void BuiltinContext::updateFuncs(const ASTData &ast) {
         std::vector<PropKey> cands;
         cands.reserve(128);
 
-        for (auto &kv : ast.ast.classProps) {
+        for (auto &kv : ast.classProps) {
             TypeID tid = kv.first;
             auto &vec = kv.second;
             for (size_t j = 0; j < vec.size(); ++j) {
@@ -138,21 +139,24 @@ TypeID BuiltinContext::pickRandomType(ScopeID scopeID) {
 
 PropKey BuiltinContext::pickRandomVar(ScopeID scopeID, TypeID type,
                                       bool isConst) {
-    const auto &mp = (isConst ? constIndex_ : mutableIndex_)[scopeID];
-    if (type == 0) {
-        if (mp.empty())
-            return PropKey::emptyKey();
-        type = pickRandomType(scopeID);
-        if (type == 0)
-            return PropKey::emptyKey();
-    }
+    const auto &mp = (isConst ? constIndex_ : mutableIndex_).at(scopeID);
+    // if (type == 0) {
+    //     if (mp.empty())
+    //         return PropKey::emptyKey();
+    //     type = pickRandomType(scopeID);
+    //     if (type == 0)
+    //         return PropKey::emptyKey();
+    // }
 
     auto mit = mp.find(type);
     if (mit == mp.end() || mit->second.empty())
         return PropKey::emptyKey();
+    auto &scopeList = varDist_.at(scopeID);
+    auto typeList = scopeList.find(type);
+    if (typeList == scopeList.end())
+        return PropKey::emptyKey();
 
-    const auto &bucket = mit->second;
-    return bucket[varDist_[scopeID][type](rng)];
+    return mit->second.at(typeList->second.at(isConst)(rng));
 }
 
 PropKey BuiltinContext::pickRandomVar(ScopeID scopeID, bool isConst) {
@@ -170,15 +174,14 @@ PropKey BuiltinContext::pickRandomVar(ScopeID scopeID,
 
 /*------------------ pickRandomMethod ------------------*/
 PropKey BuiltinContext::pickRandomFunc(ScopeID scopeID) {
-
     if (scopeID >= funcList_.size())
         return PropKey::emptyKey();
-    const auto &lst = funcList_[scopeID];
+    const auto &lst = funcList_.at(scopeID);
     if (lst.empty())
         return PropKey::emptyKey();
 
-    size_t pick = funcDist_[scopeID](rng);
-    return lst[pick];
+    size_t pick = funcDist_.at(scopeID)(rng);
+    return lst.at(pick);
 }
 
 PropKey BuiltinContext::pickRandomMethod(TypeID tid) {

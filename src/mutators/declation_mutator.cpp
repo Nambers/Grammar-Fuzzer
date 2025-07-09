@@ -127,7 +127,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             auto &node = ast.declarations[i];
             if (node.kind == ASTNodeKind::DeclareVar) {
                 const auto &varInfoKey = ast.variables[cnt++];
-                const auto &varInfo = ast.classProps[-1][varInfoKey.idx];
+                const auto &varInfo = unfoldKey(varInfoKey, ast, ctx);
                 if (varInfo.type == ctx.strID) {
                     havoc(std::get<std::string>(node.fields[1].val), 50);
                 } else if (varInfo.type == ctx.intID) {
@@ -304,7 +304,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                      func->funcSig.paramTypes) { // [param‑types ...]
                     auto &fun = ast.declarations[funID];
                     fun.fields.emplace_back(arg);
-                    funScope.variables.push_back(ast.declarations.size());
+                    funScope.variables.push_back(ast.variables.size());
                     ast.variables.emplace_back(false, ast.classProps[-1].size(),
                                                -1);
                     ast.classProps[-1].emplace_back(pt, funSid, arg);
@@ -356,10 +356,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                             state = MutationState::STATE_REROLL;
                             break;
                         }
-                        const auto &varName =
-                            unfoldKey(varNameKey, ast, ctx).name;
-                        callExpr += varName;
-                        globalVars.insert(varName);
+                        const auto &varProp = unfoldKey(varNameKey, ast, ctx);
+                        callExpr += varProp.name;
+                        if (!varProp.isConst)
+                            globalVars.insert(varProp.name);
                     }
                     if (state == MutationState::STATE_REROLL)
                         break; // reroll if failed to pick vars
@@ -399,7 +399,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 NodeID varID = ast.declarations.size();
                 scope.variables.push_back(ast.variables.size());
                 ast.variables.emplace_back(false, ast.classProps[-1].size(),
-                                           tid);
+                                           -1);
                 ast.classProps[-1].emplace_back(
                     tid, sid, std::get<std::string>(var.fields[0].val));
                 scope.declarations.push_back(varID);

@@ -5,6 +5,8 @@ from annotationlib import get_annotations, Format
 from typing import Any
 import re
 import keyword
+# in-case used as type annotation
+from types import NoneType
 
 _isclass = inspect.isclass
 _sig = inspect.signature
@@ -26,6 +28,7 @@ BLACKLIST = {
     "copyright",
     "license",
     "credits",
+    "breakpoint",
 }
 
 
@@ -193,7 +196,7 @@ def collect_all(enable_builtins=False, results=None):
                                 "name": name,
                                 "type": type_name(obj),
                                 "isCallable": False,
-                                "isConst": is_name_assignable(name),
+                                "isConst": not is_name_assignable(name),
                             }
                         )
     else:

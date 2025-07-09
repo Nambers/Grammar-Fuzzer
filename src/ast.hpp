@@ -57,6 +57,34 @@ class PropInfo {
     bool isConst = false;
     bool isCallable = false;
     FunctionSignature funcSig = {};
+    bool operator==(const PropInfo &other) const {
+        return type == other.type && scope == other.scope &&
+               name == other.name && isConst == other.isConst &&
+               isCallable == other.isCallable &&
+               funcSig.paramTypes == other.funcSig.paramTypes &&
+               funcSig.selfType == other.funcSig.selfType &&
+               funcSig.returnType == other.funcSig.returnType;
+    }
+    struct Hash {
+        std::size_t operator()(const FuzzingAST::PropInfo &key) const {
+            std::hash<std::string> stringHasher;
+            std::hash<TypeID> typeHasher;
+            std::hash<ScopeID> scopeHasher;
+
+            size_t seed = 0;
+            seed ^=
+                typeHasher(key.type) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            seed ^=
+                scopeHasher(key.scope) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            seed ^=
+                stringHasher(key.name) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            seed ^= std::hash<bool>()(key.isConst) + 0x9e3779b9 + (seed << 6) +
+                    (seed >> 2);
+            seed ^= std::hash<bool>()(key.isCallable) + 0x9e3779b9 +
+                    (seed << 6) + (seed >> 2);
+            return seed;
+        }
+    };
 };
 
 class ASTData; // forward declaration
@@ -66,17 +94,17 @@ class AST;
 class PropKey {
   public:
     bool isBuiltin; // true -> builtinsProps
-    size_t idx = 999;
+    size_t idx = SIZE_MAX;
     TypeID parentType = -1; // builtinProps[type]
 
-    inline bool empty() const { return idx == 999 && parentType == -1; }
+    inline bool empty() const { return idx == SIZE_MAX && parentType == -1; }
     inline bool operator==(const PropKey &other) const {
         return isBuiltin == other.isBuiltin && idx == other.idx &&
                parentType == other.parentType;
     }
     // empty static instance
     inline static const PropKey &emptyKey() {
-        static const PropKey emptyKeyInstance{false, 999, -1};
+        static const PropKey emptyKeyInstance{false, SIZE_MAX, -1};
         return emptyKeyInstance;
     }
 };
@@ -98,9 +126,9 @@ class BuiltinContext {
   public:
     // Build index for all scopes, merging parent scope and initializing
     // distributions
-    void updateVars(const ASTData &ast);
-    void updateFuncs(const ASTData &ast);
-    inline void update(const ASTData &ast) {
+    void updateVars(const AST &ast);
+    void updateFuncs(const AST &ast);
+    inline void update(const AST &ast) {
         updateVars(ast);
         updateFuncs(ast);
     }
@@ -128,8 +156,8 @@ class BuiltinContext {
 
     std::vector<std::vector<TypeID>> typeList_;
     std::vector<std::uniform_int_distribution<size_t>> typeDist_;
-    std::vector<
-        std::unordered_map<TypeID, std::uniform_int_distribution<size_t>>>
+    std::vector<std::unordered_map<
+        TypeID, std::array<std::uniform_int_distribution<size_t>, 2>>>
         varDist_;
 
     std::vector<std::vector<PropKey>> funcList_;
@@ -200,7 +228,7 @@ class ExecutionContext {
     virtual void releasePtr() = 0;
 };
 
-const std::string &getTypeName(TypeID tid, const AST &scope,
+const std::string &getTypeName(TypeID tid, const AST &ast,
                                const BuiltinContext &ctx);
 TypeID resolveType(const std::string &fullname, const BuiltinContext &ctx,
                    const AST &ast, ScopeID sid);
