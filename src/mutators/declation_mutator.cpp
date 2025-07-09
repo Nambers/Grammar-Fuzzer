@@ -42,10 +42,10 @@ enum class MutationPick {
 };
 
 constexpr static std::array PICK_MUTATION_WEIGHT = {
-    5, // AddFunction
-    4, // AddClass
-    3, // AddVariable
-    1, // AddImport
+    10, // AddFunction
+    8,  // AddClass
+    3,  // AddVariable
+    1,  // AddImport
 };
 static_assert(PICK_MUTATION_WEIGHT.size() ==
                   static_cast<int>(MutationPick::AddImport) + 1,
@@ -55,66 +55,6 @@ static std::discrete_distribution<int> dist(PICK_MUTATION_WEIGHT.begin(),
                                             PICK_MUTATION_WEIGHT.end());
 
 static std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
-
-static bool bumpIdentifier(std::string &id) {
-    if (id.empty()) {
-        id = "a";
-        return true;
-    }
-
-    // [A‑Za‑z][A‑Za‑z0‑9]*  ；
-    // assert(std::isalpha(static_cast<unsigned char>(id.front())));
-
-    bool carry = true;
-    for (int i = static_cast<int>(id.size()) - 1; i >= 0 && carry; --i) {
-        char &ch = id[i];
-
-        if (ch >= '0' && ch <= '8') {
-            ch++;
-            carry = false;
-        } else if (ch == '9') {
-            ch = (i == 0 ? 'a' : '0');
-        } else if (ch >= 'A' && ch <= 'Y') {
-            ch++;
-            carry = false;
-        } else if (ch == 'Z') {
-            ch = (i == 0 ? 'a' : '0');
-        } else if (ch >= 'a' && ch <= 'y') {
-            ch++;
-            carry = false;
-        } else if (ch == 'z') {
-            ch = (i == 0 ? 'a' : '0');
-        } else {
-            PANIC("illegal character in identifier");
-        }
-    }
-
-    if (carry) {
-        id.insert(id.begin(), 'a');
-        return true;
-    }
-    return false;
-}
-
-static std::optional<FunctionSignature>
-lookupMethodSig(TypeID tid, const std::string &name, const AST &ast,
-                const BuiltinContext &ctx, ScopeID startScopeID) {
-    const auto &slice = ctx.builtinsProps.find(tid);
-    if (slice != ctx.builtinsProps.end()) {
-        auto ret = getPropByName(name, slice->second, true, startScopeID);
-        if (ret)
-            return ret->funcSig;
-    }
-
-    const auto &slice2 = ast.classProps.find(tid);
-    if (slice2 != ast.classProps.end()) {
-        auto it = getPropByName(name, slice2->second, true, startScopeID);
-        if (it)
-            return it->funcSig;
-    }
-
-    return std::nullopt;
-}
 
 AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                                   BuiltinContext &ctx) {
@@ -268,6 +208,11 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     }
                     if (!inheritName.empty())
                         cls.fields.push_back({inheritName});
+                }
+                if (inheritType == -1) {
+                    // no need plain class
+                    state = MutationState::STATE_REROLL;
+                    break;
                 }
 
                 scope.inheritedTypes.push_back(inheritType);

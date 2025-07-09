@@ -380,6 +380,73 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
             }
             // otherwise is not this template error
         }
+        if (errMsg.contains(" expected at ") &&
+            errMsg.contains(" arguments, got ") && !handled) {
+            if (node->kind == ASTNodeKind::Call) {
+                // e.g. rfind expected at most 3 arguments, got 4
+                size_t pos =
+                    errMsg.find(" expected at ") + strlen(" expected at ");
+                if (errMsg.contains(" expected at most "))
+                    pos += strlen("most ");
+                else
+                    pos += strlen("least ");
+                if (pos != std::string::npos) {
+                    int expectedArgs =
+                        strtol(errMsg.c_str() + pos - 1, nullptr, 10);
+                    const std::string &funcName =
+                        std::get<std::string>(node->fields[1].val);
+                    const auto p = funcName.find('.');
+                    if (p != std::string::npos) {
+                        const std::string &typeName = funcName.substr(0, p);
+                        const std::string &methodName = funcName.substr(p + 1);
+                        TypeID tid = resolveType(typeName, ctx, ast, 0);
+                        if (tid > 0) {
+                            auto &methods = tid < ctx.builtinTypesCnt
+                                                ? ctx.builtinsProps[tid]
+                                                : ast.classProps[tid];
+                            auto it = std::find_if(
+                                methods.begin(), methods.end(),
+                                [&methodName](const PropInfo &prop) {
+                                    return prop.name == methodName;
+                                });
+                            if (it != methods.end()) {
+                                // remove the last param type
+                                it->funcSig.paramTypes.resize(expectedArgs);
+                                INFO("Updated method '{}' to have {} "
+                                     "arguments",
+                                     methodName, expectedArgs);
+                                handled = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (errMsg.contains(" object attribute ") &&
+            errMsg.contains(" is read-only") && !handled) {
+            size_t pos = 0;
+            std::string typeName = getQuoteText(errMsg, pos);
+            pos += strlen(" object attribute ");
+            std::string attrName = getQuoteText(errMsg, pos);
+            TypeID tid = resolveType(typeName, ctx, ast, 0);
+            if (tid > 0) {
+                auto &props = tid < ctx.builtinTypesCnt
+                                  ? ctx.builtinsProps.at(tid)
+                                  : ast.classProps.at(tid);
+
+                auto it = std::find_if(props.begin(), props.end(),
+                                       [&attrName](const PropInfo &prop) {
+                                           return prop.name == attrName;
+                                       });
+                if (it != props.end()) {
+                    // remove the property
+                    it->isConst = true;
+                    INFO("Marked property '{}' as read-only for typeID {}",
+                         attrName, tid);
+                    handled = true;
+                }
+            }
+        }
         // TODO
     }
     PyErr_Clear();
@@ -630,6 +697,10 @@ void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
     // for (const auto &varName : globalVars) {
     for (PyObject *key = PyIter_Next(iter.get()); key;
          key = PyIter_Next(iter.get())) {
+        if (!PyUnicode_Check(key)) {
+            ERROR("Key in execution context is not a string");
+            continue;
+        }
         std::string varName(PyUnicode_AsUTF8(key));
         PyObject *var = PyDict_GetItemString(dict, varName.c_str());
         if (!var) {

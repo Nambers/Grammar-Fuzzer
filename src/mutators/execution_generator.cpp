@@ -11,12 +11,13 @@ static std::uniform_int_distribution<int> pickBinaryOp(0,
 static std::uniform_int_distribution<int> pickUnaryOp(0, UNARY_OPS.size() - 1);
 
 constexpr static std::array PICK_EXEC_WEIGHT = {
-    2, // GetProp
-    2, // SetProp
-    3, // Call
-    1, // Return
-    1, // BinaryOp
-    1  // UnaryOp
+    7,  // GetProp
+    7,  // SetProp
+    10, // Call
+    1,  // Return
+    3,  // BinaryOp
+    2,  // UnaryOp
+    5,  // NewInstance
 };
 
 static_assert(PICK_EXEC_WEIGHT.size() ==
@@ -27,8 +28,7 @@ static_assert(PICK_EXEC_WEIGHT.size() ==
 static std::discrete_distribution<int> pickExec(PICK_EXEC_WEIGHT.begin(),
                                                 PICK_EXEC_WEIGHT.end());
 
-int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
-                              BuiltinContext &ctx,
+int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                               std::unordered_set<std::string> &globalVars,
                               ScopeID scopeID, const ASTScope &scope) {
     MutationState state = MutationState::STATE_REROLL;
@@ -59,29 +59,85 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                 state = MutationState::STATE_REROLL;
                 break;
             }
+            auto v1 = unfoldKey(v1Key, ast.ast, ctx).name;
+            auto v2 = unfoldKey(v2Key, ast.ast, ctx).name;
             if (v1Key.parentType != -1) {
-                // need to find an instance
-                // TODO
-                state = MutationState::STATE_REROLL;
-                break;
-            }
+                const auto v1pKey =
+                    ctx.pickRandomVar(scopeID, v1Key.parentType, false);
+                if (v1pKey.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                const auto &v1pName = unfoldKey(v1pKey, ast.ast, ctx).name;
+                v1 = v1pName + '.' + v1;
+                globalVars.insert(v1pName);
+            } else
+                globalVars.insert(v1);
             if (v2Key.parentType != -1) {
-                // need to find an instance
-                // TODO
-                state = MutationState::STATE_REROLL;
-                break;
-            }
-            const auto &v1 = unfoldKey(v1Key, ast.ast, ctx);
-            const auto &v2 = unfoldKey(v2Key, ast.ast, ctx);
-            if (v1.isConst || v2.isConst) {
-                // cannot set property of const variable
-                state = MutationState::STATE_REROLL;
-                break;
+                const auto v2pKey = ctx.pickRandomVar(scopeID, v2Key.parentType,
+                                                      ctx.pickConst());
+                if (v2pKey.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                v2 = unfoldKey(v2pKey, ast.ast, ctx).name + '.' + v2;
             }
 
-            curr.fields = {{v1.name}, {v2.name}};
-            if (!v1.isConst)
-                globalVars.insert(v1.name);
+            curr.fields = {{v1}, {v2}};
+
+            break;
+        }
+
+        case ASTNodeKind::NewInstance: {
+            TypeID tid = ctx.pickRandomType(scopeID);
+            if (tid == -1) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto &typeName = getTypeName(tid, ast.ast, ctx);
+            if (typeName.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            // add variables
+            auto sig = lookupMethodSig(tid, "__init__", ast.ast, ctx, scopeID);
+            if (!sig) {
+                sig = lookupMethodSig(tid, "__new__", ast.ast, ctx, scopeID);
+            }
+            curr.kind = ASTNodeKind::Call;
+            // get ret variable name
+            curr.fields.emplace_back(ast.ast.nameCnt);
+            curr.fields.emplace_back(typeName);
+            if (sig) {
+                for (auto i = 0; i < sig->paramTypes.size(); ++i) {
+                    const auto varKey =
+                        ctx.pickRandomVar(scopeID, sig->paramTypes[i], false);
+                    if (varKey.empty()) {
+                        state = MutationState::STATE_REROLL;
+                        break;
+                    }
+                    const auto &var = unfoldKey(varKey, ast.ast, ctx);
+                    if (varKey.parentType != -1) {
+                        // if it's a property, get parent variable
+                        const auto parentVarKey = ctx.pickRandomVar(
+                            scopeID, varKey.parentType, false);
+                        if (parentVarKey.empty()) {
+                            state = MutationState::STATE_REROLL;
+                            break;
+                        }
+                        const auto &parentVar =
+                            unfoldKey(parentVarKey, ast.ast, ctx);
+                        curr.fields.emplace_back(parentVar.name + '.' +
+                                                 var.name);
+                        globalVars.insert(parentVar.name);
+                    } else {
+                        curr.fields.emplace_back(var.name);
+                        globalVars.insert(var.name);
+                    }
+                }
+            }
+            globalVars.insert(ast.ast.nameCnt);
+            bumpIdentifier(ast.ast.nameCnt);
             break;
         }
 
@@ -142,22 +198,29 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                     state = MutationState::STATE_REROLL;
                     break;
                 }
-                if (paramVarKey.parentType != -1) {
-                    // need to find an instance
-                    // TODO
-                    --i;
-                    continue;
-                }
                 const auto &paramVar = unfoldKey(paramVarKey, ast.ast, ctx);
-                if (!paramVar.isConst)
-                    globalVars.insert(paramVar.name);
-                curr.fields.emplace_back(paramVar.name);
+                auto pName = paramVar.name;
+                if (paramVarKey.parentType != -1) {
+                    // TODO false workaround
+                    const auto parentVarKey = ctx.pickRandomVar(
+                        scopeID, paramVarKey.parentType, false);
+                    if (parentVarKey.empty()) {
+                        state = MutationState::STATE_REROLL;
+                        break;
+                    }
+                    const auto &p = unfoldKey(parentVarKey, ast.ast, ctx);
+                    pName = p.name + '.' + pName;
+                    // if (!p.isConst)
+                    globalVars.insert(p.name);
+                } else if (!paramVar.isConst)
+                    globalVars.insert(pName);
+                curr.fields.emplace_back(pName);
             }
             break;
         }
 
         case ASTNodeKind::Return: {
-            if (scope.retType != -1) {
+            if (scope.retType != -1 && scope.retNodeID != -1) {
                 const auto retVarKey =
                     ctx.pickRandomVar(scopeID, scope.retType, ctx.pickConst());
                 if (retVarKey.empty()) {
@@ -166,9 +229,8 @@ int FuzzingAST::generate_line(ASTNode &node, const ASTData &ast,
                 }
                 const auto &retVar = unfoldKey(retVarKey, ast.ast, ctx).name;
                 curr.fields = {{retVar}};
-            } else {
+            } else
                 state = MutationState::STATE_REROLL;
-            }
             break;
         }
 
@@ -268,6 +330,10 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
             break;
         }
         ast.ast.expressions[nodeId] = std::move(node);
+        if (node.kind == ASTNodeKind::Return) {
+            scope.retNodeID = nodeId;
+            --i;
+        }
     }
     if (scopeID != 0 && !globalVars.empty()) {
         // filter out if varName is in scope variables

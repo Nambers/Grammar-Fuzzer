@@ -34,13 +34,14 @@ enum class ASTNodeKind {
     Return,       // return x
     BinaryOp,     // x + y
     UnaryOp,      // -x
+    NewInstance,  // x = Class()
     // ---
     GlobalRef,
 };
 
 constexpr ASTNodeKind DECL_NODE_END = ASTNodeKind::Import;
 constexpr ASTNodeKind EXEC_NODE_START = ASTNodeKind::GetProp;
-constexpr ASTNodeKind EXEC_NODE_END = ASTNodeKind::UnaryOp;
+constexpr ASTNodeKind EXEC_NODE_END = ASTNodeKind::NewInstance;
 
 class FunctionSignature {
   public:
@@ -192,6 +193,7 @@ class ASTScope {
     ScopeID parent = -1;
     TypeID retType = -1;
     int paramCnt = 0;
+    NodeID retNodeID = -1;
     std::vector<NodeID> declarations = {};
     std::vector<NodeID> expressions = {};
     std::vector<std::string> types = {};
@@ -201,7 +203,7 @@ class ASTScope {
 
 class AST {
   public:
-    std::string nameCnt = "a";
+    std::string nameCnt = "aaa"; // try to avoid keyword, like `as`
     std::vector<ASTScope> scopes = {};
     std::vector<ASTNode> declarations = {};
     std::vector<ASTNode> expressions = {};

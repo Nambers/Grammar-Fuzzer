@@ -172,6 +172,12 @@ void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
         nodeToPython(out, ast.expressions[id], ast, ctx, indentLevel);
         empty = false;
     }
+    // return at the end
+    if (scope.retNodeID != -1) {
+        const auto &retNode = ast.expressions[scope.retNodeID];
+        nodeToPython(out, retNode, ast, ctx, indentLevel);
+        empty = false;
+    }
 
     if (empty)
         out << std::string(indentLevel * 4, ' ') << "pass\n";
