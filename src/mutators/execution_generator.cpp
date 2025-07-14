@@ -11,13 +11,13 @@ static std::uniform_int_distribution<int> pickBinaryOp(0,
 static std::uniform_int_distribution<int> pickUnaryOp(0, UNARY_OPS.size() - 1);
 
 constexpr static std::array PICK_EXEC_WEIGHT = {
-    7,  // GetProp
+    10, // GetProp
     7,  // SetProp
-    10, // Call
-    1,  // Return
+    20, // Call
+    2,  // Return
     3,  // BinaryOp
     2,  // UnaryOp
-    5,  // NewInstance
+    7,  // NewInstance
 };
 
 static_assert(PICK_EXEC_WEIGHT.size() ==
@@ -90,7 +90,7 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
 
         case ASTNodeKind::NewInstance: {
             TypeID tid = ctx.pickRandomType(scopeID);
-            if (tid == -1) {
+            if (tid == 0) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
@@ -312,7 +312,8 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
 int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
                                          BuiltinContext &ctx) {
 
-    const int NUM_GEN = ast.ast.scopes[scopeID].declarations.size() * 2;
+    // const int NUM_GEN = ast.ast.scopes[scopeID].declarations.size() * 2;
+    constexpr int NUM_GEN = 70; // TODO
     ASTScope &scope = ast.ast.scopes[scopeID];
     scope.expressions.resize(NUM_GEN, -1);
 

@@ -8,7 +8,7 @@ using namespace FuzzingAST;
 extern uint32_t newEdgeCnt;
 
 void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
-                                            size_t currentAstSize) {
+                                            size_t currentScopeSize) {
     if (gotNewEdge) {
         execStallCount = 0;
     }
@@ -27,7 +27,7 @@ void FuzzingAST::FuzzSchedulerState::update(bool gotNewEdge,
                 INFO("switching to declaration mutation phase due to no new "
                      "edge "
                      "found\n");
-                if (currentAstSize >= maxNumDeclarations)
+                if (currentScopeSize >= maxNumScopes)
                     phase = MutationPhase::FallbackOldCorpus;
                 else
                     phase = MutationPhase::DeclarationMutation;

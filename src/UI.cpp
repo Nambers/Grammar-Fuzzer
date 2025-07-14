@@ -116,7 +116,7 @@ class LineBuf : public std::streambuf {
     std::string line_buffer_;
 };
 
-constexpr size_t LOG_LINES = 50;
+static constexpr size_t LOG_LINES = 60;
 static RingBuffer stdout_buffer(LOG_LINES);
 static RingBuffer stderr_buffer(LOG_LINES);
 static LineBuf stdout_linebuf(stdout_buffer);
@@ -183,15 +183,15 @@ void FuzzingAST::TUI::writeTUI(const FuzzingAST::FuzzSchedulerState &state,
             hbox({text("Phase: ") | dim, text(stage_names[int(state.phase)]),
                   separator(), text("NewEdges: ") | dim,
                   text(std::to_string(newEdgeCnt)), separator(),
-                  text("NoEdge: ") | dim,
+                  text("No Edge Executions: ") | dim,
                   text(std::to_string(state.noEdgeCount)), separator(),
                   text("ErrCnt: ") | dim, text(std::to_string(errCnt))}),
             hbox({text("ExecStalls: ") | dim,
                   text(std::to_string(state.execStallCount)), separator(),
-                  text("ASTSize: ") | dim, text(std::to_string(currentASTSize)),
+                  text("ScopeCnt: ") | dim, text(std::to_string(currentASTSize)),
                   separator(), text("ExecThresh: ") | dim,
                   text(std::to_string(state.execFailureThreshold())),
-                  separator(), text("CorpusSize: ") | dim,
+                  separator(), text("Saved Corpus Size: ") | dim,
                   text(std::to_string(corpusSize))}),
             filler(),
         }) |

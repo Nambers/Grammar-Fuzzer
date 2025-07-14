@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <iostream>
+#include <regex>
 #include <serialization.hpp>
 #include <setjmp.h>
 #include <signal.h>
@@ -234,12 +235,12 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
         const static std::string badDescriptor("descriptor ");
         if (errMsg.starts_with(badUnaryOp) && !handled) {
             // e.g. bad operand type for unary ~: 'str'
-            auto colonPos = errMsg.find(':');
-            if (colonPos != std::string::npos) {
-                std::string opName = errMsg.substr(
-                    badUnaryOp.length(), colonPos - badUnaryOp.length());
-
-                std::string targetType = getQuoteText(errMsg, ++colonPos);
+            std::regex regexPattern(
+                R"(bad operand type for unary (\S+): '(\S+)')");
+            std::smatch match;
+            if (std::regex_search(errMsg, match, regexPattern)) {
+                std::string opName = match[1];
+                std::string targetType = match[2];
 
                 auto opIt =
                     std::find(UNARY_OPS.begin(), UNARY_OPS.end(), opName);
@@ -268,52 +269,44 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
         }
         if (errMsg.contains(noAttr) && !handled) {
             // e.g. 'dict' object has no attribute 'find'
-            size_t pos = 0;
-            std::string typeName = getQuoteText(errMsg, pos);
-            TypeID tid = resolveType(typeName, ctx, ast, 0);
-            if (tid <= 0) {
-                // extracted type in errMsg can be inaccurate (like base class
-                // name)
-                handled = true;
-                std::string obj = "";
-                if (node->kind == ASTNodeKind::Call) {
-                    obj = std::get<std::string>(node->fields[0].val);
-                    obj = obj.substr(0, obj.find('.'));
-                } else if (node->kind == ASTNodeKind::GetProp) {
-                    obj = std::get<std::string>(node->fields[1].val);
-                    obj = obj.substr(0, obj.find('.'));
-                } else if (node->kind == ASTNodeKind::SetProp) {
-                    obj = std::get<std::string>(node->fields[0].val);
-                    obj = obj.substr(0, obj.find('.'));
-                } else
-                    handled = false;
-                // TODO
-                // if (!obj.empty()) {
-                //     // find correct type in variables
-                //     auto it =
-                //         std::find_if(ast.variables.begin(),
-                //         ast.variables.end(),
-                //                      [&obj](const PropInfo &var) {
-                //                          return var.name == obj;
-                //                      });
-                //     if (it != ast.variables.end()) {
-                //         tid = it->type;
-                //     }
-                // }
-            } else {
-                std::string attrName = getQuoteText(errMsg, ++pos);
-                auto &props = tid < ctx.builtinTypesCnt ? ctx.builtinsProps[tid]
-                                                        : ast.classProps[tid];
-
-                auto it = std::find_if(props.begin(), props.end(),
-                                       [&attrName](const PropInfo &prop) {
-                                           return prop.name == attrName;
-                                       });
-                if (it != props.end()) {
-                    // remove the property
-                    props.erase(it);
-                    INFO("Removed property '{}' from typeID {}", attrName, tid);
+            std::regex regexPattern(R"((\S+) object has no attribute '(\S+)')");
+            std::smatch match;
+            if (std::regex_search(errMsg, match, regexPattern)) {
+                std::string typeName = match[1];
+                std::string attrName = match[2];
+                TypeID tid = resolveType(typeName, ctx, ast, 0);
+                if (tid <= 0) {
+                    // extracted type in errMsg can be inaccurate (like base
+                    // class name)
                     handled = true;
+                    std::string obj = "";
+                    if (node->kind == ASTNodeKind::Call) {
+                        obj = std::get<std::string>(node->fields[0].val);
+                        obj = obj.substr(0, obj.find('.'));
+                    } else if (node->kind == ASTNodeKind::GetProp) {
+                        obj = std::get<std::string>(node->fields[1].val);
+                        obj = obj.substr(0, obj.find('.'));
+                    } else if (node->kind == ASTNodeKind::SetProp) {
+                        obj = std::get<std::string>(node->fields[0].val);
+                        obj = obj.substr(0, obj.find('.'));
+                    } else
+                        handled = false;
+                } else {
+                    auto &props = tid < ctx.builtinTypesCnt
+                                      ? ctx.builtinsProps[tid]
+                                      : ast.classProps[tid];
+
+                    auto it = std::find_if(props.begin(), props.end(),
+                                           [&attrName](const PropInfo &prop) {
+                                               return prop.name == attrName;
+                                           });
+                    if (it != props.end()) {
+                        // remove the property
+                        props.erase(it);
+                        INFO("Removed property '{}' from typeID {}", attrName,
+                             tid);
+                        handled = true;
+                    }
                 }
             }
         }
@@ -325,15 +318,14 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
         if (errMsg.contains(" argument ") && errMsg.contains(" must be ") &&
             !handled) {
             // e.g. replace() argument 1 must be str, not None
-            size_t pos = errMsg.find(" argument ") + strlen(" argument ");
-            size_t argNum = strtol(errMsg.c_str() + pos, nullptr, 10);
-            pos = errMsg.find(" must be ", pos) + strlen(" must be ");
-            size_t end = errMsg.find(',', pos);
-            std::string expType = errMsg.substr(pos, end - pos);
-            if (!expType.contains(' ')) {
-                // 0 is ret val name, 1 is func name
-                const std::string &funcName =
-                    std::get<std::string>(node->fields[1].val);
+            std::regex regexPattern(
+                R"((\S+)\(\) argument (\d+) must be (\S+), not (\S+))");
+            std::smatch match;
+            if (std::regex_search(errMsg, match, regexPattern)) {
+                std::string funcName = match[1];
+                size_t argNum = std::stoul(match[2]);
+                std::string expType = match[3];
+
                 const auto p = funcName.find('.');
                 if (p != std::string::npos) {
                     const std::string &typeName = funcName.substr(0, p);
@@ -384,15 +376,11 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
             errMsg.contains(" arguments, got ") && !handled) {
             if (node->kind == ASTNodeKind::Call) {
                 // e.g. rfind expected at most 3 arguments, got 4
-                size_t pos =
-                    errMsg.find(" expected at ") + strlen(" expected at ");
-                if (errMsg.contains(" expected at most "))
-                    pos += strlen("most ");
-                else
-                    pos += strlen("least ");
-                if (pos != std::string::npos) {
-                    int expectedArgs =
-                        strtol(errMsg.c_str() + pos - 1, nullptr, 10);
+                std::regex regexPattern(
+                    R"((\S+) expected at (?:most|least) (\d+) arguments, got (\d+))");
+                std::smatch match;
+                if (std::regex_search(errMsg, match, regexPattern)) {
+                    int expectedArgs = std::stoi(match[2]);
                     const std::string &funcName =
                         std::get<std::string>(node->fields[1].val);
                     const auto p = funcName.find('.');
@@ -422,28 +410,36 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                 }
             }
         }
+        if (errMsg.contains(" attribute '") && errMsg.contains("' of '") &&
+            errMsg.contains(" objects is not writable") && !handled) {
+            // e.g. attribute 'real' of 'int' objects is not writable
+        }
         if (errMsg.contains(" object attribute ") &&
             errMsg.contains(" is read-only") && !handled) {
-            size_t pos = 0;
-            std::string typeName = getQuoteText(errMsg, pos);
-            pos += strlen(" object attribute ");
-            std::string attrName = getQuoteText(errMsg, pos);
-            TypeID tid = resolveType(typeName, ctx, ast, 0);
-            if (tid > 0) {
-                auto &props = tid < ctx.builtinTypesCnt
-                                  ? ctx.builtinsProps.at(tid)
-                                  : ast.classProps.at(tid);
+            // e.g. 'list' object attribute 'extend' is read-only
+            std::regex regexPattern(
+                R"('(\S+)' object attribute '(\S+)' is read-only)");
+            std::smatch match;
+            if (std::regex_search(errMsg, match, regexPattern)) {
+                std::string typeName = match[1];
+                std::string attrName = match[2];
+                TypeID tid = resolveType(typeName, ctx, ast, 0);
+                if (tid > 0) {
+                    auto &props = tid < ctx.builtinTypesCnt
+                                      ? ctx.builtinsProps.at(tid)
+                                      : ast.classProps.at(tid);
 
-                auto it = std::find_if(props.begin(), props.end(),
-                                       [&attrName](const PropInfo &prop) {
-                                           return prop.name == attrName;
-                                       });
-                if (it != props.end()) {
-                    // remove the property
-                    it->isConst = true;
-                    INFO("Marked property '{}' as read-only for typeID {}",
-                         attrName, tid);
-                    handled = true;
+                    auto it = std::find_if(props.begin(), props.end(),
+                                           [&attrName](const PropInfo &prop) {
+                                               return prop.name == attrName;
+                                           });
+                    if (it != props.end()) {
+                        // mark the property as read-only
+                        it->isConst = true;
+                        INFO("Marked property '{}' as read-only for typeID {}",
+                             attrName, tid);
+                        handled = true;
+                    }
                 }
             }
         }

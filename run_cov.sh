@@ -2,9 +2,6 @@
 
 set -e
 
-COV_PATH=$(readlink -f cov)
-BUILD_PATH=$COV_PATH/build
-
 # do llvm-cov
 
 llvm-profdata merge -sparse $(find ./ -type f -name "*.profraw") -o default.profdata

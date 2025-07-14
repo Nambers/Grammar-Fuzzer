@@ -137,10 +137,10 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
         PANIC("Failed to run declarations.code={}", declRet);
     };
     history.reserve(200);
-    const auto sizeTmp = ast.ast.scopes[0].declarations.size();
+    const auto scopeCnt = ast.ast.scopes.size();
     while (scheduler.noEdgeCount <= scheduler.execFailureThreshold() &&
            history.size() < 200) {
-        TUI::update(scheduler, sizeTmp);
+        TUI::update(scheduler, scopeCnt);
         ASTNode data;
         if (generate_line(data, ast, ctx, globalVars, 0, scope) != 0) {
             // can't generate a valid line, go mutate declaration
@@ -222,7 +222,7 @@ void FuzzingAST::fuzzerDriver() {
             auto lines = testInputStream(newData, scheduler);
             if (cacheNewEdgeCnt < newEdgeCnt) {
                 // got new edge
-                scheduler.update(1, newData.ast.declarations.size());
+                scheduler.update(1, newData.ast.scopes.size());
                 const size_t base = newData.ast.expressions.size();
                 newData.ast.expressions.insert(newData.ast.expressions.end(),
                                                lines.begin(), lines.end());
@@ -239,36 +239,42 @@ void FuzzingAST::fuzzerDriver() {
                 }
             } else {
                 // no new edge
-                scheduler.update(0, newData.ast.declarations.size());
+                scheduler.update(0, newData.ast.scopes.size());
             }
             break;
         }
         case MutationPhase::FallbackOldCorpus: {
-            if (scheduler.corpus.size() >= 2) {
-                // randomly fallback to one of first half of the corpus
+            scheduler.corpus.erase(scheduler.corpus.begin() + scheduler.idx);
+            --corpusSize;
+            if (corpusSize > 0) {
+                // randomly fallback to one of all
                 // maybe don't remove current one?
-                scheduler.corpus.erase(scheduler.corpus.begin() +
-                                       scheduler.idx);
-                scheduler.idx = rng() % (scheduler.corpus.size() / 2);
-                scheduler.update(
-                    0,
-                    scheduler.corpus.at(scheduler.idx).ast.declarations.size());
-                newEdgeCnt = 0;
-                break;
+                scheduler.idx = rng() % corpusSize;
+            } else {
+                scheduler.idx = 0;
+                scheduler.corpus.push_back({});
+                ++corpusSize;
             }
+            scheduler.update(
+                0, scheduler.corpus.at(scheduler.idx).ast.scopes.size());
+            newEdgeCnt = 0;
+            break;
         }
-            [[fallthrough]];
         case MutationPhase::DeclarationMutation: {
-            newEdgeCnt = 0; // reset edge count for declaration change
             // continue mutating on current
             ASTData newData = scheduler.corpus.at(scheduler.idx);
             mutate_declaration(newData, scheduler.ctx);
             newData.ast.expressions.clear();
             generate_execution(newData, scheduler.ctx);
-            scheduler.update(0, newData.ast.declarations.size());
-            scheduler.corpus.push_back(newData);
-            ++corpusSize;
-            scheduler.idx = scheduler.corpus.size() - 1;
+            scheduler.update(0, newData.ast.scopes.size());
+            // if current newEdgeCnt is 0, newData replaced the current one
+            if (newEdgeCnt > 0) {
+                scheduler.corpus.push_back(newData);
+                ++corpusSize;
+            } else
+                scheduler.corpus[scheduler.idx] = newData;
+            scheduler.idx = corpusSize - 1;
+            newEdgeCnt = 0; // reset edge count for declaration change
             break;
         }
         }

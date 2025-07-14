@@ -42,9 +42,9 @@ enum class MutationPick {
 };
 
 constexpr static std::array PICK_MUTATION_WEIGHT = {
-    10, // AddFunction
-    8,  // AddClass
-    3,  // AddVariable
+    30, // AddFunction
+    9,  // AddClass
+    20,  // AddVariable
     1,  // AddImport
 };
 static_assert(PICK_MUTATION_WEIGHT.size() ==
@@ -171,6 +171,11 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
 
         /* ----------  AddClass  ---------- */
         case MutationPick::AddClass: {
+            if (ast.scopes[sid].parent != -1) {
+                // TODO rn don't do nested class
+                state = MutationState::STATE_REROLL;
+                break;
+            }
             ASTNode cls;
             cls.kind = ASTNodeKind::Class;
 
@@ -186,6 +191,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     (parentScopeID != -1 ? ast.scopes[parentScopeID] : scope);
                 if (typesCnt > 0) {
                     TypeID tid = ctx.pickRandomType(sid);
+                    if (tid == 0) {
+                        state = MutationState::STATE_REROLL;
+                        break;
+                    }
                     if (tid < scope.types.size()) {
                         inheritType = tid + SCOPE_MAX_TYPE * (sid + 1);
                         inheritName = scope.types[tid];
@@ -275,6 +284,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             var.fields = {{ast.nameCnt}, {}};
             bumpIdentifier(ast.nameCnt);
             TypeID tid = ctx.pickRandomType(sid);
+            if (tid == 0) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
             {
                 auto &scope = ast.scopes[sid];
                 std::string typeName = getTypeName(tid, ast, ctx);

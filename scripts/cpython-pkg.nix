@@ -34,7 +34,7 @@ let
   sourceVersion = {
     major = "3";
     minor = "14";
-    patch = "0b2";
+    patch = "0b4";
     suffix = "";
   };
   pythonVersion = with sourceVersion; "${major}.${minor}";
@@ -46,7 +46,7 @@ let
     owner = "python";
     repo = "cpython";
     rev = "v${version}";
-    hash = "sha256-FpOanW5G08aGM9j2+tTXuGk0uTXV+KGl/eOViwTFgrQ=";
+    hash = "sha256-ABjzrPpJYGJ89eu+MPseJLFaNcJvvalAZo7+GvZJjSw=";
   };
   keep-references = pkgs.lib.concatMapStringsSep " " (val: "-e ${val}") [
     (placeholder "out")
