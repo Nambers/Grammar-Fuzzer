@@ -1,6 +1,7 @@
 # Grammar fuzzer
 
-Syntax aware token/source codes text mutation based fuzzer.
+Syntax aware token/source codes text mutation based fuzzer.  
+*Started in SEFCOM.*
 
 ## Features / Contribution
 
@@ -23,10 +24,7 @@ Syntax aware token/source codes text mutation based fuzzer.
 - Reflecta
 - Nautils
 
-
 ---
-
-or collect branches cover by existent tests. Then set those as "known" to make fuzzer find more deeper branches.
 
 ## Pipeline
 

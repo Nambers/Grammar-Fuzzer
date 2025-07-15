@@ -39,11 +39,6 @@ static std::string readFile(const fs::path &path) {
     return std::string((std::istreambuf_iterator<char>(in)), {});
 }
 
-static void handleSigint(int) {
-    std::cerr << "\n[cov] Caught SIGINT, exiting cleanly...\n";
-    shouldExit = true;
-}
-
 static void runASTStr(const std::string &re) {
     PyObject *code = Py_CompileString(re.c_str(), "<ast>", Py_file_input);
     PyObject *dict = PyDict_New();
@@ -55,6 +50,8 @@ static void runASTStr(const std::string &re) {
     Py_DECREF(code);
     Py_DECREF(dict);
     Py_DECREF(name);
+    // don't care about error
+    PyErr_Clear();
 }
 
 static void collect() {
@@ -62,11 +59,6 @@ static void collect() {
     for (const auto &entry : fs::directory_iterator(queueDir)) {
         if (entry.is_regular_file())
             entries.push_back(entry);
-    }
-
-    if (entries.empty()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        return;
     }
 
     for (const auto &entry : entries) {
@@ -88,14 +80,12 @@ static void collect() {
         } catch (const std::exception &e) {
             std::cerr << "[cov] Error processing " << filename << ": "
                       << e.what() << "\n";
-            // Optionally move to done/ or to a "corpus/bad" folder
         }
     }
 }
 
 int main() {
     Py_Initialize();
-    signal(SIGINT, handleSigint);
 
     if (!fs::exists(doneDir)) {
         fs::create_directories(doneDir);
@@ -105,11 +95,7 @@ int main() {
     initPrimitiveTypes(ctx);
 
     std::cout << "[cov] Starting coverage runner...\n";
-
-    while (!shouldExit) {
-        collect();
-    }
-    collect(); // Final collection to ensure all files are processed
+    collect();
     Py_Finalize();
     return 0;
 }

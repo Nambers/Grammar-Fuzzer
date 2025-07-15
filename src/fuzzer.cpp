@@ -53,10 +53,10 @@ static void print_backtrace() {
 }
 
 static void crash_handler() {
-    WRITE_STDERR("crash! last saved states:");
-    WRITE_STDOUT("\n===AST===\n");
-    WRITE_STDOUT(data_backup.c_str());
-    WRITE_STDOUT(data_backup2.c_str());
+    WRITE_STDOUT("crash! dump last state\n");
+    WRITE_STDERR("\n===AST===\n");
+    WRITE_STDERR(data_backup.c_str());
+    WRITE_STDERR(data_backup2.c_str());
     fuzzerEmitCacheCorpus();
     int cnt = 0;
     for (const auto &data : scheduler.corpus) {
@@ -244,21 +244,22 @@ void FuzzingAST::fuzzerDriver() {
             break;
         }
         case MutationPhase::FallbackOldCorpus: {
+            // maybe don't remove current one?
             scheduler.corpus.erase(scheduler.corpus.begin() + scheduler.idx);
             --corpusSize;
+            newEdgeCnt = 0;
             if (corpusSize > 0) {
                 // randomly fallback to one of all
-                // maybe don't remove current one?
                 scheduler.idx = rng() % corpusSize;
+                scheduler.update(
+                    0, scheduler.corpus.at(scheduler.idx).ast.scopes.size());
+                break;
             } else {
                 scheduler.idx = 0;
                 scheduler.corpus.push_back({});
                 ++corpusSize;
             }
-            scheduler.update(
-                0, scheduler.corpus.at(scheduler.idx).ast.scopes.size());
-            newEdgeCnt = 0;
-            break;
+            [[fallthrough]];
         }
         case MutationPhase::DeclarationMutation: {
             // continue mutating on current
@@ -271,9 +272,9 @@ void FuzzingAST::fuzzerDriver() {
             if (newEdgeCnt > 0) {
                 scheduler.corpus.push_back(newData);
                 ++corpusSize;
+                scheduler.idx = corpusSize - 1;
             } else
-                scheduler.corpus[scheduler.idx] = newData;
-            scheduler.idx = corpusSize - 1;
+                scheduler.corpus.at(scheduler.idx) = newData;
             newEdgeCnt = 0; // reset edge count for declaration change
             break;
         }
