@@ -3,29 +3,42 @@
 Syntax aware token/source codes text mutation based fuzzer.  
 *Started in SEFCOM.*
 
-## Features / Contribution
+## Targets
+
+- CPython `3.14.0b4`
+- JavaScript TODO
+- LUA TODO
+- etc.
+
+## How to use
+
+- build instructed binary
+  1. `nix-shell scripts/cpython-inst.nix`
+  2. `./build.sh`
+  3. collect builtin info `python3 targets/CPython/builtins.py targets/CPython/builtins.json`
+- build coverage binary
+  1. `nix-shell scripts/cpython-cov.nix`
+  2. `./build_cov.sh`
+- run fuzzer `./run.sh`
+- after fuzzer terminated, build coverage result
+  1. `nix-shell scripts/cpython-cov.nix`
+  2. `./run_cov.sh`
+  3. draw map `python cov_map.py`(install dependencies by `pip install -r requirements.txt`)
+
+## Features / Contributions
 
 - scope tracking
 - declaration and execution statements follow different mutation engines
 - adaptive mutation rate
 - mutate multiple scope at the same times (attribution problem)
 - Higher level general language features support -> e.g. symbol overload (prototype pollution under JS, class-level overload and inherit under Python)
-- SandBox-able, iterated scope: e.g. sandbox inner python
+- Fully customized fuzzing framework including TUI, scheduler, mutator and coverage report
 
-## Targets
+## Pipeline
 
-- CPython
-- JavaScript TODO
-- LUA TODO
-- etc.
+![pipeline](pipeline.svg)
 
 ## Previous works
 
 - Reflecta
 - Nautils
-
----
-
-## Pipeline
-
-![pipeline](pipeline.svg)

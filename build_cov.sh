@@ -7,5 +7,8 @@ USING_CORE=$(( $(nproc) - 1 ))
 
 mkdir -p $BUILD_PATH
 
+export CC=clang
+export CXX=clang++
+
 cmake -B $BUILD_PATH ./
-cmake --build $BUILD_PATH --target CPythonCov -- -j $USING_CORE
+cmake --build $BUILD_PATH -j $USING_CORE --target CPythonCov

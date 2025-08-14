@@ -43,8 +43,11 @@ while [ "$1" != "" ]; do
     shift
 done
 
+export CC=clang
+export CXX=clang++
+
 cmake -B $BUILD_PATH $CMAKE_ARG .
-cmake --build $BUILD_PATH --target pyFuzzer CPythonTest CPythonConvert -- -j $USING_CORE
+cmake --build $BUILD_PATH -j $USING_CORE --target pyFuzzer CPythonTest CPythonConvert
 
 # python3 targets/CPython/builtins.py targets/CPython/builtins.json
 
