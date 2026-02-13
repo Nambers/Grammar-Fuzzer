@@ -5,7 +5,7 @@ Syntax aware token/source codes text mutation based fuzzer.
 
 ## Targets
 
-- CPython `3.14.0b4`
+- CPython
 - JavaScript TODO
 - LUA TODO
 - etc.
