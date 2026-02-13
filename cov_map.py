@@ -5,7 +5,8 @@ import polars as pl
 import plotly.express as px
 
 COV_JSON_PATH = "cov.json"
-OUTPUT_HTML_PATH = "treemap.html"
+OUTPUT_PATH = "treemap.html"
+
 
 def load_file_level_cov(json_path):
     with open(json_path, "r") as f:
@@ -14,7 +15,8 @@ def load_file_level_cov(json_path):
     rows = []
     for file in raw["data"][0]["files"]:
         path = file["filename"]
-        if "summary" not in file: continue
+        if "summary" not in file:
+            continue
         summary = file["summary"]
         total = summary["regions"]["count"]
         covered = summary["regions"]["covered"]
@@ -25,16 +27,19 @@ def load_file_level_cov(json_path):
         name = path.split("/")[-1]
         dir_ = path.split("/")[-2] if "/" in path else ""
 
-        rows.append({
-            "dir": dir_,
-            "file": name,
-            "Covered Percentage (%)": covered / total * 100,
-            "regions": total
-        })
+        rows.append(
+            {
+                "dir": dir_,
+                "file": name,
+                "Covered Percentage (%)": covered / total * 100,
+                "regions": total,
+            }
+        )
 
     return pl.DataFrame(rows)
 
-def plot_treemap(df: pl.DataFrame, output_html="treemap.html"):
+
+def plot_treemap(df: pl.DataFrame, output="treemap.html"):
     fig = px.treemap(
         df.to_dict(),
         path=["dir", "file"],
@@ -52,12 +57,14 @@ def plot_treemap(df: pl.DataFrame, output_html="treemap.html"):
         coloraxis_colorbar_title="Coverage %",
     )
 
-    fig.write_html(output_html)
-    print(f"[+] Treemap saved to {output_html}")
+    fig.write_html(output + ".html")
+    fig.write_image(output + ".svg")
+    print(f"[+] Treemap saved to {output}")
+
 
 if __name__ == "__main__":
     df = load_file_level_cov(COV_JSON_PATH)
     if df.is_empty():
         print("[!] No file coverage data found in cov.json")
     else:
-        plot_treemap(df, OUTPUT_HTML_PATH)
+        plot_treemap(df, OUTPUT_PATH)
