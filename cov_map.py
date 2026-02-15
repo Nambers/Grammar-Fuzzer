@@ -5,7 +5,7 @@ import polars as pl
 import plotly.express as px
 
 COV_JSON_PATH = "cov.json"
-OUTPUT_PATH = "treemap.html"
+OUTPUT_PATH = "treemap"
 
 
 def load_file_level_cov(json_path):
@@ -39,7 +39,7 @@ def load_file_level_cov(json_path):
     return pl.DataFrame(rows)
 
 
-def plot_treemap(df: pl.DataFrame, output="treemap.html"):
+def plot_treemap(df: pl.DataFrame, output="treemap"):
     fig = px.treemap(
         df.to_dict(),
         path=["dir", "file"],

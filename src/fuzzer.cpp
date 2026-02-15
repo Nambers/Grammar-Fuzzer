@@ -1,9 +1,9 @@
-#include "fuzzer.hpp"
 #include "FuzzSchedulerState.hpp"
 #include "UI.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "emit.hpp"
+#include "fuzzer.hpp"
 #include "log.hpp"
 #include "mutators.hpp"
 #include "serialization.hpp"
@@ -210,9 +210,12 @@ void FuzzingAST::fuzzerDriver() {
     cacheCorpus.reserve(MAX_CACHE_SIZE);
     TUI::initTUI();
     while (true) {
-        // if (scheduler.corpus.empty()) {
-        //     scheduler.corpus.emplace_back(std::make_shared<ASTData>());
-        // }
+        if (scheduler.corpus.empty()) {
+            //     scheduler.corpus.emplace_back(std::make_shared<ASTData>());
+            TUI::finalizeTUI();
+            INFO("No more inputs to fuzz. Exiting.");
+            break;
+        }
         switch (scheduler.phase) {
         case MutationPhase::ExecutionGeneration: {
             // continue generation on current

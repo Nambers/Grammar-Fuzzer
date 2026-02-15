@@ -5,12 +5,13 @@ from annotationlib import get_annotations, Format
 from typing import Any
 import re
 import keyword
+
 # in-case used as type annotation
 from types import NoneType
 
 _isclass = inspect.isclass
 _sig = inspect.signature
-_isbuiltiin = inspect.isbuiltin
+_isbuiltiin = lambda a: getattr(a, "__module__", None) == "builtins"
 
 BLACKLIST = {
     "eval",
@@ -169,6 +170,35 @@ def collect_class_methods(cls, qualified_name=None):
             )
 
     return methods
+
+
+def collect_module_functions(module, qualified_name=None):
+    functions = {}
+    modname = qualified_name or module.__name__
+    functions[modname] = []
+    for attr_name in dir(module):
+        if attr_name in BLACKLIST or any(a in attr_name for a in BLACKLIST):
+            continue
+        attr = getattr(module, attr_name)
+        if _isbuiltiin(attr):
+            continue
+        if _isclass(attr):
+            collected = collect_class_methods(attr)
+            functions.update(collected)
+        elif callable(attr):
+            sig = extract_signature(
+                attr,
+                modname,
+                "static" if isinstance(attr, staticmethod) else "instance",
+            )
+            functions[modname].append(
+                {"name": attr_name, "funcSig": sig, "isCallable": True}
+            )
+        else:
+            functions[modname].append(
+                {"name": attr_name, "type": type_name(attr), "isCallable": False}
+            )
+    return functions
 
 
 def collect_all(enable_builtins=False, results=None):

@@ -143,6 +143,11 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
         }
         break;
     }
+    case ASTNodeKind::Import: {
+        out << "exec('from " << std::get<std::string>(node.fields[0].val)
+            << " import *', globals())";
+        break;
+    }
 
     default:
         out << "# unsupported kind " << static_cast<int>(node.kind);
@@ -160,6 +165,11 @@ void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
     const ASTScope &scope = ast.scopes[sid];
     bool empty = true;
 
+    if (scope.globalRefID != -1) {
+        nodeToPython(out, ast.declarations[scope.globalRefID], ast, ctx,
+                     indentLevel);
+        empty = false;
+    }
     for (NodeID id : scope.declarations) {
         const auto &decl = ast.declarations[id];
         // all function are under class, which will be rendered in class handler

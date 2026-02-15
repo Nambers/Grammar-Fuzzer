@@ -3,7 +3,7 @@ import sys
 import builtins
 import operator
 import inspect
-from driver import collect_all
+from driver import collect_all, collect_module_functions
 import warnings
 
 # ignore exactly the "~ on bool" deprecation
@@ -33,6 +33,8 @@ OPS = [
     operator.rshift,
 ]
 UOPS = [operator.neg, operator.not_, operator.inv]
+
+MODULES = ["math"]
 
 
 def try_construct_dummy(cls):
@@ -66,7 +68,7 @@ def try_construct_dummy(cls):
 def convert_types_to_index(results: dict):
     type_list = results["types"]
     idx_map = {name: i for i, name in enumerate(type_list) if name}
-    real_results = {"funcs": {}, "types": []}
+    real_results = {"funcs": {}, "types": [], "modules": {}}
 
     def get_index(type_name: str) -> int:
         if (not type_name) or type_name == "-1":
@@ -91,6 +93,23 @@ def convert_types_to_index(results: dict):
             else:
                 sig["type"] = get_index(sig["type"])
             real_results["funcs"][get_index(name)].append(sig)
+    for i, mod in results["modules"].items():
+        real_results["modules"][i] = {}
+        for name, obj in mod.items():
+            real_results["modules"][i][get_index(name)] = []
+            for sig in obj:
+                if sig["isCallable"]:
+                    sig["funcSig"]["paramTypes"] = [
+                        get_index(t) for t in sig["funcSig"]["paramTypes"]
+                    ]
+                    sig["funcSig"]["returnType"] = get_index(
+                        sig["funcSig"]["returnType"]
+                    )
+                    sig["funcSig"]["selfType"] = get_index(sig["funcSig"]["selfType"])
+                else:
+                    sig["type"] = get_index(sig["type"])
+                real_results["modules"][i][get_index(name)].append(sig)
+
     real_results["types"] = type_list
     return real_results
 
@@ -107,6 +126,9 @@ if __name__ == "__main__":
     results = collect_all(
         enable_builtins=True, results={"funcs": {}, "types": ["object"]}
     )
+    results["modules"] = {}
+    for i, mod in enumerate(MODULES):
+        results["modules"][i + 1] = collect_module_functions(__import__(mod))
 
     results = convert_types_to_index(results)
 

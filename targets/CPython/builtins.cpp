@@ -24,6 +24,16 @@ void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
         TypeID tid = tidStr == "-1" ? -1 : std::stoi(tidStr);
         tmp.emplace(tid, bucket.value().get<std::vector<PropInfo>>());
     }
+    for (auto &mod : j["modules"].items()) {
+        ModuleID mid = std::stoi(mod.key());
+        std::unordered_map<TypeID, std::vector<PropInfo>> modProps;
+        for (auto &bucket : mod.value().items()) {
+            const std::string &tidStr = bucket.key();
+            TypeID tid = tidStr == "-1" ? -1 : std::stoi(tidStr);
+            modProps.emplace(tid, bucket.value().get<std::vector<PropInfo>>());
+        }
+        ctx.modulesProps.emplace(mid, std::move(modProps));
+    }
     ctx.builtinsProps.swap(tmp);
     auto tmp2 = j["types"].get<std::vector<std::string>>();
     ctx.types.swap(tmp2);

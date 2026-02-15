@@ -59,8 +59,9 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            auto v1 = unfoldKey(v1Key, ast.ast, ctx).name;
-            auto v2 = unfoldKey(v2Key, ast.ast, ctx).name;
+            const auto &v1 = unfoldKey(v1Key, ast.ast, ctx);
+            auto v1Name = v1.name;
+            auto v2Name = unfoldKey(v2Key, ast.ast, ctx).name;
             if (v1Key.parentType != -1) {
                 const auto v1pKey =
                     ctx.pickRandomVar(scopeID, v1Key.parentType, false);
@@ -68,11 +69,13 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                     state = MutationState::STATE_REROLL;
                     break;
                 }
-                const auto &v1pName = unfoldKey(v1pKey, ast.ast, ctx).name;
-                v1 = v1pName + '.' + v1;
-                globalVars.insert(v1pName);
+                const auto &v1p = unfoldKey(v1pKey, ast.ast, ctx);
+                v1Name = v1p.name + '.' + v1Name;
+                // globalVars.insert(v1pName);
+                insertGlobalVar(v1p, globalVars);
             } else
-                globalVars.insert(v1);
+                // globalVars.insert(v1);
+                insertGlobalVar(v1, globalVars);
             if (v2Key.parentType != -1) {
                 const auto v2pKey = ctx.pickRandomVar(scopeID, v2Key.parentType,
                                                       ctx.pickConst());
@@ -80,10 +83,10 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                     state = MutationState::STATE_REROLL;
                     break;
                 }
-                v2 = unfoldKey(v2pKey, ast.ast, ctx).name + '.' + v2;
+                v2Name = unfoldKey(v2pKey, ast.ast, ctx).name + '.' + v2Name;
             }
 
-            curr.fields = {{v1}, {v2}};
+            curr.fields = {{v1Name}, {v2Name}};
 
             break;
         }
@@ -129,10 +132,12 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                             unfoldKey(parentVarKey, ast.ast, ctx);
                         curr.fields.emplace_back(parentVar.name + '.' +
                                                  var.name);
-                        globalVars.insert(parentVar.name);
+                        // globalVars.insert(parentVar.name);
+                        insertGlobalVar(parentVar, globalVars);
                     } else {
                         curr.fields.emplace_back(var.name);
-                        globalVars.insert(var.name);
+                        // globalVars.insert(var.name);
+                        insertGlobalVar(var, globalVars);
                     }
                 }
             }
@@ -155,16 +160,17 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             curr.fields.emplace_back(fname);
             // return value var
             if (sig.returnType != -1) {
-                const auto retVarKey =
+                const auto &retVarKey =
                     ctx.pickRandomVar(scopeID, sig.returnType, false);
-                const auto &retVar =
-                    retVarKey.empty() ? ""
-                                      : unfoldKey(retVarKey, ast.ast, ctx).name;
-                curr.fields[0] = {retVar};
-                if (!retVar.empty()) {
-                    globalVars.insert(retVar);
-                }
+                if (!retVarKey.empty()) {
+                    const auto &retVar = unfoldKey(retVarKey, ast.ast, ctx);
+                    curr.fields[0] = {retVar.name};
+                    // globalVars.insert(retVar);
+                    insertGlobalVar(retVar, globalVars);
+                } else
+                    curr.fields[0] = {""};
             }
+
             if (funcKey.parentType != -1) {
                 if (sig.selfType != -1) {
                     // if it's a method, add self as first parameter
@@ -174,11 +180,11 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                         state = MutationState::STATE_REROLL;
                         break;
                     }
-                    const auto &selfVar =
-                        unfoldKey(selfVarKey, ast.ast, ctx).name;
-                    globalVars.insert(selfVar);
+                    const auto &selfVar = unfoldKey(selfVarKey, ast.ast, ctx);
+                    // globalVars.insert(selfVar);
+                    insertGlobalVar(selfVar, globalVars);
                     // xxx.yyy(...)
-                    curr.fields[1] = {selfVar + '.' + fname};
+                    curr.fields[1] = {selfVar.name + '.' + fname};
                     // or static usage: yyy(xxx, ...)
                     // curr.fields.push_back({selfVar});
                 } else {
@@ -210,10 +216,9 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                     }
                     const auto &p = unfoldKey(parentVarKey, ast.ast, ctx);
                     pName = p.name + '.' + pName;
-                    // if (!p.isConst)
-                    globalVars.insert(p.name);
-                } else if (!paramVar.isConst)
-                    globalVars.insert(pName);
+                    insertGlobalVar(p, globalVars);
+                } else
+                    insertGlobalVar(paramVar, globalVars);
                 curr.fields.emplace_back(pName);
             }
             break;
@@ -266,8 +271,9 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 break;
             }
             const auto &a3 = unfoldKey(a3Key, ast.ast, ctx).name;
-            if (!a.isConst)
-                globalVars.insert(a.name);
+            // if (!a.isConst)
+            //     globalVars.insert(a.name);
+            insertGlobalVar(a, globalVars);
             curr.fields = {{a.name}, {a3}, {BINARY_OPS[op]}, {a2}};
             break;
         }
@@ -293,8 +299,9 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             }
             const auto &a2 = unfoldKey(a2Key, ast.ast, ctx).name;
             curr.fields = {{a.name}, {UNARY_OPS[op]}, {a2}};
-            if (!a.isConst)
-                globalVars.insert(a.name);
+            // if (!a.isConst)
+            //     globalVars.insert(a.name);
+            insertGlobalVar(a, globalVars);
             break;
         }
 

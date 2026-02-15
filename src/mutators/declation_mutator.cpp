@@ -44,7 +44,7 @@ enum class MutationPick {
 constexpr static std::array PICK_MUTATION_WEIGHT = {
     30, // AddFunction
     9,  // AddClass
-    20,  // AddVariable
+    20, // AddVariable
     1,  // AddImport
 };
 static_assert(PICK_MUTATION_WEIGHT.size() ==
@@ -158,9 +158,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     ast.declarations[funNodeID].fields.emplace_back(arg);
 
                     funScope.variables.push_back(ast.variables.size());
-                    ast.variables.emplace_back(false, ast.classProps[-1].size(),
-                                               -1);
-                    ast.classProps[-1].emplace_back(pt, funSid, arg);
+                    ast.variables.emplace_back(NO_MODULE,
+                                               ast.classProps[-1].size(), -1);
+                    ast.classProps[-1].emplace_back(pt, funSid, arg, false,
+                                                    false, true);
                     bumpIdentifier(arg);
                     ast.declarations[funNodeID].fields.emplace_back(pt);
                 }
@@ -259,9 +260,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     auto &fun = ast.declarations[funID];
                     fun.fields.emplace_back(arg);
                     funScope.variables.push_back(ast.variables.size());
-                    ast.variables.emplace_back(false, ast.classProps[-1].size(),
-                                               -1);
-                    ast.classProps[-1].emplace_back(pt, funSid, arg);
+                    ast.variables.emplace_back(NO_MODULE,
+                                               ast.classProps[-1].size(), -1);
+                    ast.classProps[-1].emplace_back(pt, funSid, arg, false,
+                                                    false, true);
                     bumpIdentifier(arg);
                     fun.fields.emplace_back(pt);
                 }
@@ -316,8 +318,9 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                         }
                         const auto &varProp = unfoldKey(varNameKey, ast, ctx);
                         callExpr += varProp.name;
-                        if (!varProp.isConst)
-                            globalVars.insert(varProp.name);
+                        insertGlobalVar(varProp, globalVars);
+                        // if (!varProp.isConst && !varProp.isArg)
+                        //     globalVars.insert(varProp.name);
                     }
                     if (state == MutationState::STATE_REROLL)
                         break; // reroll if failed to pick vars
@@ -342,10 +345,9 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                         }
                         if (!globalVars.empty()) {
                             // add global reference
+                            scope.globalRefID = ast.declarations.size();
                             ast.declarations.emplace_back(
                                 ASTNodeKind::GlobalRef);
-                            scope.declarations.push_back(
-                                ast.declarations.size() - 1);
                             auto &node = ast.declarations.back();
                             for (const auto &varName : globalVars) {
                                 node.fields.emplace_back(varName);
@@ -356,7 +358,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
 
                 NodeID varID = ast.declarations.size();
                 scope.variables.push_back(ast.variables.size());
-                ast.variables.emplace_back(false, ast.classProps[-1].size(),
+                ast.variables.emplace_back(NO_MODULE, ast.classProps[-1].size(),
                                            -1);
                 ast.classProps[-1].emplace_back(
                     tid, sid, std::get<std::string>(var.fields[0].val));
@@ -366,12 +368,14 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             break;
         }
         case MutationPick::AddImport: {
-            // NodeID impID = ast.declarations.size();
-            // ASTNode imp;
-            // imp.kind = ASTNodeKind::Import;
-            // imp.fields = {ASTNodeValue{TARGET_LIBS[distLib(rng)]}};
-            // ast.declarations.push_back(imp);
-            state = MutationState::STATE_REROLL; // NOT PLANNED YET
+            NodeID impID = ast.declarations.size();
+            ModuleID mid = distLib(rng);
+            ASTNode imp;
+            imp.kind = ASTNodeKind::Import;
+            imp.fields = {ASTNodeValue{TARGET_LIBS[mid]}};
+            ast.scopes[sid].declarations.push_back(ast.declarations.size());
+            ast.declarations.push_back(imp);
+            ast.importedModules.insert(mid + 1); // moduleID starts from 1
             break;
         }
         } // switch

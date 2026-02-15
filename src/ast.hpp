@@ -6,6 +6,7 @@
 #include <random>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -14,7 +15,10 @@ namespace FuzzingAST {
 using NodeID = int;
 using ScopeID = int;
 using TypeID = int;
+using ModuleID = int;
 using VarID = int;
+constexpr ModuleID NO_MODULE = -1;
+constexpr ModuleID BUILTIN_MODULE_ID = 0;
 
 constexpr size_t SCOPE_MAX_TYPE = 200;
 constexpr std::array BINARY_OPS{"+",  "-",  "*",  "/", "%",  "**",
@@ -57,11 +61,12 @@ class PropInfo {
     std::string name;
     bool isConst = false;
     bool isCallable = false;
+    bool isArg = false;
     FunctionSignature funcSig = {};
     bool operator==(const PropInfo &other) const {
         return type == other.type && scope == other.scope &&
                name == other.name && isConst == other.isConst &&
-               isCallable == other.isCallable &&
+               isCallable == other.isCallable && isArg == other.isArg &&
                funcSig.paramTypes == other.funcSig.paramTypes &&
                funcSig.selfType == other.funcSig.selfType &&
                funcSig.returnType == other.funcSig.returnType;
@@ -94,13 +99,15 @@ class AST;
 // avoid store ptr
 class PropKey {
   public:
-    bool isBuiltin; // true -> builtinsProps
+    ModuleID moduleID = NO_MODULE; // moduleID = -1 => general, moduleID = 0 =>
+                                   // builtins, moduleID > 0
+                                   // => modulesProps[moduleID - 1]
     size_t idx = SIZE_MAX;
     TypeID parentType = -1; // builtinProps[type]
 
     inline bool empty() const { return idx == SIZE_MAX && parentType == -1; }
     inline bool operator==(const PropKey &other) const {
-        return isBuiltin == other.isBuiltin && idx == other.idx &&
+        return moduleID == other.moduleID && idx == other.idx &&
                parentType == other.parentType;
     }
     // empty static instance
@@ -113,6 +120,9 @@ class PropKey {
 class BuiltinContext {
   public:
     std::unordered_map<TypeID, std::vector<PropInfo>> builtinsProps = {};
+    std::unordered_map<ModuleID,
+                       std::unordered_map<TypeID, std::vector<PropInfo>>>
+        modulesProps = {};
     std::vector<std::string> types = {};
     size_t builtinTypesCnt = 0;
     std::vector<std::vector<std::vector<TypeID>>> ops = {};
@@ -194,6 +204,7 @@ class ASTScope {
     TypeID retType = -1;
     int paramCnt = 0;
     NodeID retNodeID = -1;
+    NodeID globalRefID = -1;
     std::vector<NodeID> declarations = {};
     std::vector<NodeID> expressions = {};
     std::vector<std::string> types = {};
@@ -207,8 +218,9 @@ class AST {
     std::vector<ASTScope> scopes = {};
     std::vector<ASTNode> declarations = {};
     std::vector<ASTNode> expressions = {};
-    // variables treated as parentType = -1(no parent), isBuiltin = false
+    // variables treated as parentType = -1(no parent), ModuleID = -1(no module)
     std::vector<PropKey> variables = {};
+    std::unordered_set<ModuleID> importedModules = {};
     // we don't do normal function in fuzzing,
     // bc it is very unlikely to trigger bugs
     // std::vector<PropInfo> functions;
@@ -240,15 +252,32 @@ std::optional<PropInfo> getPropByName(const std::string &name,
 void initPrimitiveTypes(BuiltinContext &ctx);
 inline const PropInfo &unfoldKey(const PropKey &key, const AST &ast,
                                  const BuiltinContext &ctx) {
-    if (key.isBuiltin)
+    if (key.moduleID == BUILTIN_MODULE_ID)
         return ctx.builtinsProps.at(key.parentType).at(key.idx);
+    if (key.moduleID > 0)
+        return ctx.modulesProps.at(key.moduleID).at(key.parentType).at(key.idx);
     return ast.classProps.at(key.parentType).at(key.idx);
 }
 
 inline PropInfo &unfoldKey(const PropKey &key, AST &ast, BuiltinContext &ctx) {
-    if (key.isBuiltin)
+    if (key.moduleID == BUILTIN_MODULE_ID)
         return ctx.builtinsProps.at(key.parentType).at(key.idx);
+    if (key.moduleID > 0)
+        return ctx.modulesProps.at(key.moduleID).at(key.parentType).at(key.idx);
     return ast.classProps.at(key.parentType).at(key.idx);
+}
+
+inline void insertGlobalVar(const std::string &varName, bool isConst,
+                            bool isArg,
+                            std::unordered_set<std::string> &globalVars) {
+    if (!isConst && !isArg)
+        globalVars.insert(varName);
+}
+
+inline void insertGlobalVar(const PropInfo &varProp,
+                            std::unordered_set<std::string> &globalVars) {
+    if (!varProp.isConst && !varProp.isArg)
+        globalVars.insert(varProp.name);
 }
 }; // namespace FuzzingAST
 

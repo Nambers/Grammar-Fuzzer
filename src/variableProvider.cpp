@@ -1,7 +1,4 @@
 #include "ast.hpp"
-#include "log.hpp"
-#include <algorithm>
-#include <iterator>
 #include <random>
 
 extern std::mt19937 rng;
@@ -29,8 +26,8 @@ void BuiltinContext::updateVars(const AST &ast) {
                     continue;
 
                 auto &index = pi.isConst ? constIndex_ : mutableIndex_;
-                index[i][pi.type].emplace_back(false, j, tid);
-                index[i][0].emplace_back(false, j, tid); // fallback
+                index[i][pi.type].emplace_back(NO_MODULE, j, tid);
+                index[i][0].emplace_back(NO_MODULE, j, tid); // fallback
             }
         }
 
@@ -40,8 +37,24 @@ void BuiltinContext::updateVars(const AST &ast) {
             for (size_t j = 0; j < pis.size(); ++j) {
                 const auto &pi = pis[j];
                 auto &index = pi.isConst ? constIndex_ : mutableIndex_;
-                index[i][pi.type].emplace_back(true, j, parentType);
-                index[i][0].emplace_back(true, j, parentType); // fallback
+                index[i][pi.type].emplace_back(BUILTIN_MODULE_ID, j,
+                                               parentType);
+                index[i][0].emplace_back(BUILTIN_MODULE_ID, j,
+                                         parentType); // fallback
+            }
+        }
+
+        for (auto mid : ast.importedModules) {
+            for (const auto &kv : modulesProps[mid]) {
+                TypeID parentType = kv.first;
+                const auto &pis = kv.second;
+                for (size_t j = 0; j < pis.size(); ++j) {
+                    const auto &pi = pis[j];
+                    auto &index = pi.isConst ? constIndex_ : mutableIndex_;
+                    index[i][pi.type].emplace_back(mid, j, parentType);
+                    index[i][0].emplace_back(mid, j,
+                                             parentType); // fallback
+                }
             }
         }
 
@@ -105,7 +118,7 @@ void BuiltinContext::updateFuncs(const AST &ast) {
             for (size_t j = 0; j < vec.size(); ++j) {
                 const auto &pi = vec[j];
                 if (pi.isCallable && pi.scope <= (ScopeID)i) {
-                    cands.emplace_back(false, j, tid);
+                    cands.emplace_back(NO_MODULE, j, tid);
                 }
             }
         }
@@ -115,7 +128,19 @@ void BuiltinContext::updateFuncs(const AST &ast) {
             auto &vec = kv.second;
             for (size_t j = 0; j < vec.size(); ++j) {
                 if (vec[j].isCallable) {
-                    cands.emplace_back(true, j, tid);
+                    cands.emplace_back(BUILTIN_MODULE_ID, j, tid);
+                }
+            }
+        }
+
+        for (const auto &mid : ast.importedModules) {
+            for (auto &kv : modulesProps[mid]) {
+                TypeID tid = kv.first;
+                auto &vec = kv.second;
+                for (size_t j = 0; j < vec.size(); ++j) {
+                    if (vec[j].isCallable) {
+                        cands.emplace_back(mid, j, tid);
+                    }
                 }
             }
         }
@@ -193,10 +218,10 @@ PropKey BuiltinContext::pickRandomMethod(TypeID tid) {
 
     if (auto itB = builtinsProps.find(tid); itB != builtinsProps.end()) {
         if (idx < itB->second.size())
-            return PropKey{true, idx, tid};
+            return PropKey{BUILTIN_MODULE_ID, idx, tid};
         idx -= itB->second.size();
     }
-    return {false, idx, tid};
+    return {NO_MODULE, idx, tid};
 }
 
 bool FuzzingAST::BuiltinContext::pickConst() { return pickConstDist(rng); }
