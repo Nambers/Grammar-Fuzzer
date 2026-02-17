@@ -11,7 +11,7 @@ void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
     std::ifstream in("./builtins.json");
     if (!in) {
         std::cerr
-            << "Failed to open builtins.json, run build.sh to generate it."
+            << "Failed to open builtins.json, run builtins_gen.lua first."
             << std::endl;
         raise(SIGINT);
     }
@@ -44,14 +44,18 @@ void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
     ctx.unaryOps.swap(tmp4);
 }
 
-// Python-specific primitive type resolution
+// Lua-specific primitive type resolution
 void FuzzingAST::initPrimitiveTypes(BuiltinContext &ctx) {
-    ctx.strID = std::find(ctx.types.begin(), ctx.types.end(), "str") -
-                ctx.types.begin();
-    ctx.intID = std::find(ctx.types.begin(), ctx.types.end(), "int") -
-                ctx.types.begin();
-    ctx.floatID = std::find(ctx.types.begin(), ctx.types.end(), "float") -
-                  ctx.types.begin();
-    ctx.boolID = std::find(ctx.types.begin(), ctx.types.end(), "bool") -
-                 ctx.types.begin();
+    auto find = [&](const std::string &name) -> TypeID {
+        auto it =
+            std::find(ctx.types.begin(), ctx.types.end(), name);
+        return (it != ctx.types.end())
+                   ? static_cast<TypeID>(it - ctx.types.begin())
+                   : -1;
+    };
+
+    ctx.strID = find("string");
+    ctx.intID = find("number");
+    ctx.floatID = find("number"); // Lua has a single number type
+    ctx.boolID = find("boolean");
 }

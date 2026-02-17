@@ -1,9 +1,9 @@
+#include <Python.h> // Python.h should be first to include
 #include "target.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "dumper.hpp"
 #include "log.hpp"
-#include <Python.h>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -117,7 +117,7 @@ static void takePipe(const char *pipe) {
 }
 
 int FuzzingAST::initialize(int *argc, char ***argv) {
-    std::ifstream driverPyStream("./targets/CPython/driver.py");
+    std::ifstream driverPyStream("../targets/CPython/driver.py");
     if (!driverPyStream.is_open()) {
         PANIC("Failed to open driver.py, please run build.sh to generate it.");
     }
@@ -163,44 +163,51 @@ int FuzzingAST::initialize(int *argc, char ***argv) {
 int FuzzingAST::finalize() { return Py_FinalizeEx(); }
 
 void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
-    // dummy corpus
-    // decl:
-    // + str_a = ""
-    // + str_b = ""
-    // + byte_a = b"""
-    // + int_a = 0
+    // Seed with every primitive type so the variable pool is rich from the
+    // start: str, bytes, int, float, bool, and a populated list.
     TypeID bytesType = std::find(ctx.types.begin(), ctx.types.end(), "bytes") -
                        ctx.types.begin();
-    data.ast.declarations.resize(4);
+    TypeID listType = std::find(ctx.types.begin(), ctx.types.end(), "list") -
+                      ctx.types.begin();
+
+    constexpr int NUM_SEED = 9;
+    data.ast.declarations.resize(NUM_SEED);
     data.ast.declarations[0] =
-        ASTNode{ASTNodeKind::DeclareVar, {{"str_a"}, {"\"\""}}};
+        ASTNode{ASTNodeKind::DeclareVar, {{"str_a"}, {"\"hello\""}}};
     data.ast.declarations[1] =
-        ASTNode{ASTNodeKind::DeclareVar, {{"str_b"}, {"\"\""}}};
+        ASTNode{ASTNodeKind::DeclareVar, {{"str_b"}, {"\"world\""}}};
     data.ast.declarations[2] =
         ASTNode{ASTNodeKind::DeclareVar, {{"byte_a"}, {"b\"\""}}};
     data.ast.declarations[3] =
-        ASTNode{ASTNodeKind::DeclareVar, {{"int_a"}, {0}}};
-    data.ast.classProps[-1].resize(4);
-    data.ast.classProps[-1][0] = PropInfo{ctx.strID, 0, "str_a", false};
-    data.ast.classProps[-1][1] = PropInfo{ctx.strID, 0, "str_b", false};
-    data.ast.classProps[-1][2] = PropInfo{bytesType, 0, "byte_a", false};
-    data.ast.classProps[-1][3] = PropInfo{ctx.intID, 0, "int_a", false};
-    data.ast.variables.resize(4);
-    data.ast.variables[0] = PropKey{false, 0, -1};
-    data.ast.variables[1] = PropKey{false, 1, -1};
-    data.ast.variables[2] = PropKey{false, 2, -1};
-    data.ast.variables[3] = PropKey{false, 3, -1};
-    data.ast.scopes.resize(1);
-    data.ast.scopes[0].declarations.resize(4);
-    data.ast.scopes[0].variables.resize(4);
-    data.ast.scopes[0].declarations[0] = 0;
-    data.ast.scopes[0].declarations[1] = 1;
-    data.ast.scopes[0].declarations[2] = 2;
-    data.ast.scopes[0].declarations[3] = 3;
-    data.ast.scopes[0].variables[0] = 0;
-    data.ast.scopes[0].variables[1] = 1;
-    data.ast.scopes[0].variables[2] = 2;
-    data.ast.scopes[0].variables[3] = 3;
+        ASTNode{ASTNodeKind::DeclareVar, {{"int_a"}, {int64_t(0)}}};
+    data.ast.declarations[4] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"int_b"}, {int64_t(42)}}};
+    data.ast.declarations[5] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"float_a"}, {3.14}}};
+    data.ast.declarations[6] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"bool_a"}, {true}}};
+    data.ast.declarations[7] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"bool_b"}, {false}}};
+    data.ast.declarations[8] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"list_a"}, {"[3, 1, 4, 1, 5]"}}};
+
+    data.ast.classProps[-1].resize(NUM_SEED);
+    data.ast.classProps[-1][0] = PropInfo{ctx.strID,   0, "str_a",   false};
+    data.ast.classProps[-1][1] = PropInfo{ctx.strID,   0, "str_b",   false};
+    data.ast.classProps[-1][2] = PropInfo{bytesType,   0, "byte_a",  false};
+    data.ast.classProps[-1][3] = PropInfo{ctx.intID,   0, "int_a",   false};
+    data.ast.classProps[-1][4] = PropInfo{ctx.intID,   0, "int_b",   false};
+    data.ast.classProps[-1][5] = PropInfo{ctx.floatID, 0, "float_a", false};
+    data.ast.classProps[-1][6] = PropInfo{ctx.boolID,  0, "bool_a",  false};
+    data.ast.classProps[-1][7] = PropInfo{ctx.boolID,  0, "bool_b",  false};
+    data.ast.classProps[-1][8] = PropInfo{listType,    0, "list_a",  false};
+
+    data.ast.variables.resize(NUM_SEED);
+    for (int i = 0; i < NUM_SEED; ++i) {
+        data.ast.variables[i] = PropKey{NO_MODULE, static_cast<size_t>(i), -1};
+        data.ast.scopes[0].declarations.push_back(i);
+        data.ast.scopes[0].variables.push_back(i);
+    }
 }
 
 static std::string getQuoteText(const std::string &str, size_t &pos) {
