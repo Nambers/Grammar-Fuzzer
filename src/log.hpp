@@ -18,7 +18,7 @@ inline constexpr const char *RESET = "\033[0m";
 
 template <typename... Args>
 void debug(std::format_string<Args...> fmt, Args &&...args) {
-#ifndef DSIABLE_DEBUG_OUTPUT
+#ifndef DISABLE_DEBUG_OUTPUT
     std::cout << std::format(fmt, std::forward<Args>(args)...) << std::endl;
 #endif
 }

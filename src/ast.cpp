@@ -69,13 +69,3 @@ FuzzingAST::getPropByName(const std::string &name,
     return std::nullopt;
 }
 
-void FuzzingAST::initPrimitiveTypes(BuiltinContext &ctx) {
-    ctx.strID = std::find(ctx.types.begin(), ctx.types.end(), "str") -
-                ctx.types.begin();
-    ctx.intID = std::find(ctx.types.begin(), ctx.types.end(), "int") -
-                ctx.types.begin();
-    ctx.floatID = std::find(ctx.types.begin(), ctx.types.end(), "float") -
-                  ctx.types.begin();
-    ctx.boolID = std::find(ctx.types.begin(), ctx.types.end(), "bool") -
-                 ctx.types.begin();
-}

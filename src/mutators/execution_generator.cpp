@@ -142,6 +142,16 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 }
             }
             globalVars.insert(ast.ast.nameCnt);
+            // Register the new instance variable in the AST type system.
+            {
+                auto &scope_ = ast.ast.scopes[scopeID];
+                scope_.variables.push_back(
+                    static_cast<VarID>(ast.ast.variables.size()));
+                ast.ast.variables.emplace_back(
+                    NO_MODULE, ast.ast.classProps[-1].size(), -1);
+                ast.ast.classProps[-1].emplace_back(tid, scopeID,
+                                                    ast.ast.nameCnt, false);
+            }
             bumpIdentifier(ast.ast.nameCnt);
             break;
         }
@@ -155,20 +165,24 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             }
             const auto &func = unfoldKey(funcKey, ast.ast, ctx);
             const auto &sig = func.funcSig;
-            const auto &fname = func.name;
+            const auto fname = func.name;
             curr.fields.emplace_back(""); // placeholder for return arg
             curr.fields.emplace_back(fname);
-            // return value var
+            // return value — create a fresh variable so the pool grows
             if (sig.returnType != -1) {
-                const auto &retVarKey =
-                    ctx.pickRandomVar(scopeID, sig.returnType, false);
-                if (!retVarKey.empty()) {
-                    const auto &retVar = unfoldKey(retVarKey, ast.ast, ctx);
-                    curr.fields[0] = {retVar.name};
-                    // globalVars.insert(retVar);
-                    insertGlobalVar(retVar, globalVars);
-                } else
-                    curr.fields[0] = {""};
+                const auto newVarName = ast.ast.nameCnt;
+                bumpIdentifier(ast.ast.nameCnt);
+                curr.fields[0] = {newVarName};
+                // Register the new variable in the AST type system so
+                // subsequent generate_line calls can find it by type.
+                auto &scope_ = ast.ast.scopes[scopeID];
+                scope_.variables.push_back(
+                    static_cast<VarID>(ast.ast.variables.size()));
+                ast.ast.variables.emplace_back(
+                    NO_MODULE, ast.ast.classProps[-1].size(), -1);
+                ast.ast.classProps[-1].emplace_back(sig.returnType, scopeID,
+                                                    newVarName, false);
+                globalVars.insert(newVarName);
             }
 
             if (funcKey.parentType != -1) {

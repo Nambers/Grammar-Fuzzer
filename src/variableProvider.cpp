@@ -36,6 +36,9 @@ void BuiltinContext::updateVars(const AST &ast) {
             const auto &pis = kv.second;
             for (size_t j = 0; j < pis.size(); ++j) {
                 const auto &pi = pis[j];
+                // Skip callable entries in the function index
+                if (pi.isCallable)
+                    continue;
                 auto &index = pi.isConst ? constIndex_ : mutableIndex_;
                 index[i][pi.type].emplace_back(BUILTIN_MODULE_ID, j,
                                                parentType);
@@ -50,6 +53,9 @@ void BuiltinContext::updateVars(const AST &ast) {
                 const auto &pis = kv.second;
                 for (size_t j = 0; j < pis.size(); ++j) {
                     const auto &pi = pis[j];
+                    // Skip callable module entries - same rationale as builtins
+                    if (pi.isCallable)
+                        continue;
                     auto &index = pi.isConst ? constIndex_ : mutableIndex_;
                     index[i][pi.type].emplace_back(mid, j, parentType);
                     index[i][0].emplace_back(mid, j,
