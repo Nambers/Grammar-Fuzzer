@@ -1,0 +1,9 @@
+build
+build_cov
+builtins.json
+corpus
+reports
+errlog.txt
+*.prof*
+treemap.*
+cov.json

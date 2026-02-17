@@ -6,8 +6,17 @@
 !targets/**
 !scripts
 !scripts/**
-!*.sh
-!CMakeLists.txt
+
+# Per-target build directories (track scripts, ignore build outputs)
+!build_cpython
+!build_cpython/**
+build_cpython/out
+build_cpython/out_cov
+!build_lua
+!build_lua/**
+build_lua/out
+build_lua/out_cov
+
 !readme.md
 !cov_map.py
 !pipeline.svg

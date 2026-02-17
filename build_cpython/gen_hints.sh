@@ -2,22 +2,23 @@
 set -e
 
 ###
-# setup environment and type hints for vscode
+# Setup environment and type hints for vscode (CPython target)
 ###
 
 if ! echo "$PATH" | grep -q '/nix/store'; then
     echo "This script is intended to be run inside a Nix shell."
-    echo "Use gen_hints.sh"
+    echo "Use gen_hints_wrapper.sh"
     exit 1
 fi
 
-if [ ! -d ".vscode" ]; then
-    mkdir .vscode
+SCRIPT_DIR=$(realpath "$(dirname $0)")
+ROOT_DIR="$SCRIPT_DIR/.."
+
+if [ ! -d "$ROOT_DIR/.vscode" ]; then
+    mkdir "$ROOT_DIR/.vscode"
 fi
 
-WORK_DIR=$(readlink -f .)
-SCRIPT_DIR=$(readlink -f ./scripts)
-REAL_PYTHON_INCLUDE=$(readlink -f $CPYTHON_INCLUDE_PATH/python*/)
+REAL_PYTHON_INCLUDE=$(readlink -f "$CPYTHON_INCLUDE_PATH/python"*/)
 
 INCLUDE_DIRS=(
     "$REAL_PYTHON_INCLUDE"
@@ -27,7 +28,7 @@ IFS=':' read -ra ADDITIONAL_INCLUDE_ARRAY <<<"$ADDITIONAL_INCLUDES"
 INCLUDE_DIRS+=("${ADDITIONAL_INCLUDE_ARRAY[@]}")
 
 # VSCode IntelliSense config
-cat >"$WORK_DIR/.vscode/c_cpp_properties.json" <<EOF
+cat >"$ROOT_DIR/.vscode/c_cpp_properties.json" <<EOF
 {
     "configurations": [
         {
@@ -38,7 +39,7 @@ $(printf '\t\t\t\t"%s",\n' "${INCLUDE_DIRS[@]}")
             ],
             "defines": [],
             "compilerPath": "$CLANG_BIN/clang++",
-            "compileCommands": "build/compile_commands.json",
+            "compileCommands": "build_cpython/out/compile_commands.json",
             "cStandard": "c23",
             "cppStandard": "c++23",
             "intelliSenseMode": "linux-clang-x64"
@@ -49,17 +50,17 @@ $(printf '\t\t\t\t"%s",\n' "${INCLUDE_DIRS[@]}")
 EOF
 
 # VSCode settings
-cat >"$WORK_DIR/.vscode/settings.json" <<EOF
+cat >"$ROOT_DIR/.vscode/settings.json" <<EOF
 {
     "cmake.sourceDirectory": "\${workspaceFolder}/src",
-    "cmake.buildDirectory": "\${workspaceFolder}/build",
+    "cmake.buildDirectory": "\${workspaceFolder}/build_cpython/out",
     "C_Cpp.default.compilerPath": "$CLANG_BIN/clang++",
     "cmake.configureOnOpen": false
 }
 EOF
 
 # Clangd config
-cat >"$WORK_DIR/.clangd" <<EOF
+cat >"$ROOT_DIR/.clangd" <<EOF
 CompileFlags:
   Add: [
 $(printf '\t"-I%s",\n' "${INCLUDE_DIRS[@]}")

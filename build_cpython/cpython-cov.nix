@@ -4,19 +4,18 @@ let
     fuzzCFlags = pkgs.lib.concatStringsSep " " [
       "-g"
       "-fno-omit-frame-pointer"
-      "-O2"
-      "-fsanitize=fuzzer-no-link,address,undefined"
-      "-fno-sanitize=function,alignment"
-      "-fsanitize-coverage=trace-pc-guard"
+      "-O1"
+      "-fprofile-instr-generate"
+      "-fcoverage-mapping"
     ];
 
     fuzzLDFlags = pkgs.lib.concatStringsSep " " [
-      "-fsanitize=fuzzer-no-link,address,undefined"
-      "-fsanitize-coverage=trace-pc-guard"
+      "-fprofile-instr-generate"
+      "-fcoverage-mapping"
       "-fuse-ld=mold"
     ];
   };
-  nlohmann_json_custom = pkgs.callPackage ./nlohmann_json_custom.nix {
+  nlohmann_json_custom = pkgs.callPackage ../scripts/nlohmann_json_custom.nix {
     cmake = pkgs.cmake;
     doCheck = false;
   };
@@ -32,17 +31,14 @@ in pkgs.mkShell {
     mold-wrapped
     nlohmann_json_custom
     ftxui
-    clang-tools
   ];
   shellHook = ''
-    export ASAN_OPTIONS=allocator_may_return_null=1:detect_leaks=0;
+    export ASAN_OPTIONS='detect_leaks=0';
     export CC="${pkgs.clang}/bin/clang";
     export CXX="${pkgs.clang}/bin/clang++";
     export CLANG_BIN="${pkgs.clang}/bin";
     export NIX_ENFORCE_NO_NATIVE=0;
-    export CPYTHON_INCLUDE_PATH="${cpython-pkg}/include";
+    export CPYTHON_LIB="${cpython-pkg}/lib";
     export PATH="${cpython-pkg}/bin:$PATH";
-    export COMPILER_RT_LIBC="${pkgs.llvmPackages.compiler-rt-libc}/lib/linux";
-    export ADDITIONAL_INCLUDES="${nlohmann_json_custom}/include:${pkgs.ftxui}/include";
   '';
 }

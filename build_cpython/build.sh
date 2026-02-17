@@ -2,7 +2,7 @@
 set -e
 
 ###
-# build the pyFuzzer
+# Build the pyFuzzer (CPython target)
 ###
 
 if ! echo "$PATH" | grep -q '/nix/store'; then
@@ -11,21 +11,14 @@ if ! echo "$PATH" | grep -q '/nix/store'; then
     exit 1
 fi
 
-pushd() {
-    pushd "$@" > /dev/null
-}
-
-popd() {
-    popd "$@" > /dev/null
-}
-
-WORK_DIR=$(readlink -f .)
-SCRIPT_DIR=$(readlink -f ./scripts)
-cd $WORK_DIR
-
-BUILD_PATH=$(readlink -f build)
+SCRIPT_DIR=$(realpath "$(dirname $0)")
+BUILD_PATH="$SCRIPT_DIR/build"
 USING_CORE=$(( $(nproc) - 1 ))
 CMAKE_ARG=""
+
+if [ ! -f builtins.json ]; then
+    python3 "$SCRIPT_DIR/../targets/CPython/builtins.py" builtins.json
+fi
 
 while [ "$1" != "" ]; do
     case $1 in
@@ -46,8 +39,5 @@ done
 export CC=clang
 export CXX=clang++
 
-cmake -B $BUILD_PATH $CMAKE_ARG .
-cmake --build $BUILD_PATH -j $USING_CORE --target pyFuzzer CPythonTest CPythonConvert
-
-# python3 targets/CPython/builtins.py targets/CPython/builtins.json
-
+cmake -B "$BUILD_PATH" $CMAKE_ARG "$SCRIPT_DIR"
+cmake --build "$BUILD_PATH" -j "$USING_CORE" --target pyFuzzer CPythonTest CPythonConvert
