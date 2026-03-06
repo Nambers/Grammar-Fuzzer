@@ -173,6 +173,23 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
             }
         }
 
+        // Collect metamethod names from member functions.
+        // Lua metamethods (__len, __add, __eq, etc.) must be set in the
+        // instance metatable, not just on the class table.
+        std::vector<std::string> metamethodNames;
+        for (size_t i = idx; i < node.fields.size(); ++i) {
+            NodeID fnID =
+                static_cast<NodeID>(std::get<int64_t>(node.fields[i].val));
+            const auto &fn = ast.declarations[fnID];
+            const std::string &fnName =
+                std::get<std::string>(fn.fields[0].val);
+            // metamethods start with __ but exclude __init__ and __index
+            if (fnName.size() > 2 && fnName[0] == '_' && fnName[1] == '_' &&
+                fnName != "__init__" && fnName != "__index") {
+                metamethodNames.push_back(fnName);
+            }
+        }
+
         // emit metatable-based class
         out << name << " = setmetatable({}, {";
         if (!bases.empty()) {
@@ -180,7 +197,13 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
         }
         out << ",\n";
         out << ind << "    __call = function(cls, ...)\n";
-        out << ind << "        local self = setmetatable({}, {__index = cls})\n";
+        // Build instance metatable with __index and any metamethods
+        out << ind << "        local mt = {__index = cls";
+        for (const auto &mm : metamethodNames) {
+            out << ", " << mm << " = cls." << mm;
+        }
+        out << "}\n";
+        out << ind << "        local self = setmetatable({}, mt)\n";
         out << ind
             << "        if cls.__init__ then cls.__init__(self, ...) end\n";
         out << ind << "        return self\n";
@@ -197,12 +220,17 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
             const std::string &fnName =
                 std::get<std::string>(fn.fields[0].val);
 
-            // emit as ClassName.method(self, ...)
+            // emit as ClassName:method(...)  — self is implicit via ':'
             size_t pCnt =
                 fn.fields.size() > 2 ? (fn.fields.size() - 2) / 2 : 0;
+            // Skip 'self' parameter (first param) in the signature since
+            // ':' syntax provides it implicitly
+            bool hasSelf = (pCnt > 0 &&
+                std::get<std::string>(fn.fields[2].val) == "self");
+            size_t startParam = hasSelf ? 1 : 0;
             out << ind << "function " << name << ":" << fnName << "(";
-            for (size_t p = 0; p < pCnt; ++p) {
-                if (p)
+            for (size_t p = startParam; p < pCnt; ++p) {
+                if (p > startParam)
                     out << ", ";
                 out << std::get<std::string>(fn.fields[2 + p * 2].val);
             }
@@ -225,6 +253,25 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
         out << mod << " = require(\"" << mod << "\")";
         break;
     }
+
+    /* -- SetItem  (container[index] = value) ------------------------- */
+    case ASTNodeKind::SetItem:
+        valueToLua(out, node.fields[0], ast, ctx, indentLevel);
+        out << "[";
+        valueToLua(out, node.fields[1], ast, ctx, indentLevel);
+        out << "] = ";
+        valueToLua(out, node.fields[2], ast, ctx, indentLevel);
+        break;
+
+    /* -- GetItem  (result = container[index]) ------------------------- */
+    case ASTNodeKind::GetItem:
+        valueToLua(out, node.fields[0], ast, ctx, indentLevel);
+        out << " = ";
+        valueToLua(out, node.fields[1], ast, ctx, indentLevel);
+        out << "[";
+        valueToLua(out, node.fields[2], ast, ctx, indentLevel);
+        out << "]";
+        break;
 
     /* -- NewInstance (should be lowered to Call before reaching here) */
     case ASTNodeKind::NewInstance:

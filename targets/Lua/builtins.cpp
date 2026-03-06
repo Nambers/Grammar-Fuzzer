@@ -58,4 +58,7 @@ void FuzzingAST::initPrimitiveTypes(BuiltinContext &ctx) {
     ctx.intID = find("number");
     ctx.floatID = find("number"); // Lua has a single number type
     ctx.boolID = find("boolean");
+    ctx.listID = find("table");       // Lua tables serve as lists
+    ctx.dictID = find("table");       // Lua tables serve as dicts
+    ctx.bytearrayID = -1;             // Lua has no bytearray
 }

@@ -54,4 +54,10 @@ void FuzzingAST::initPrimitiveTypes(BuiltinContext &ctx) {
                   ctx.types.begin();
     ctx.boolID = std::find(ctx.types.begin(), ctx.types.end(), "bool") -
                  ctx.types.begin();
+    ctx.listID = std::find(ctx.types.begin(), ctx.types.end(), "list") -
+                 ctx.types.begin();
+    ctx.bytearrayID = std::find(ctx.types.begin(), ctx.types.end(), "bytearray") -
+                      ctx.types.begin();
+    ctx.dictID = std::find(ctx.types.begin(), ctx.types.end(), "dict") -
+                 ctx.types.begin();
 }

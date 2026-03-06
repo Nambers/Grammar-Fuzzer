@@ -39,13 +39,15 @@ enum class ASTNodeKind {
     BinaryOp,     // x + y
     UnaryOp,      // -x
     NewInstance,  // x = Class()
+    SetItem,     // x[y] = z
+    GetItem,     // z = x[y]
     // ---
     GlobalRef,
 };
 
 constexpr ASTNodeKind DECL_NODE_END = ASTNodeKind::Import;
 constexpr ASTNodeKind EXEC_NODE_START = ASTNodeKind::GetProp;
-constexpr ASTNodeKind EXEC_NODE_END = ASTNodeKind::NewInstance;
+constexpr ASTNodeKind EXEC_NODE_END = ASTNodeKind::GetItem;
 
 class FunctionSignature {
   public:
@@ -131,6 +133,9 @@ class BuiltinContext {
     TypeID intID = -1;
     TypeID floatID = -1;
     TypeID boolID = -1;
+    TypeID listID = -1;
+    TypeID bytearrayID = -1;
+    TypeID dictID = -1;
     std::discrete_distribution<bool> pickConstDist{
         9, 1}; // 9:1 non-const and const
                // --- variable provider ---

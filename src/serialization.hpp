@@ -72,7 +72,9 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ASTNodeKind,
                               {ASTNodeKind::BinaryOp, "BinaryOp"},
                               {ASTNodeKind::UnaryOp, "UnaryOp"},
                               {ASTNodeKind::GlobalRef, "GlobalRef"},
-                              {ASTNodeKind::NewInstance, "NewInstance"}});
+                              {ASTNodeKind::NewInstance, "NewInstance"},
+                              {ASTNodeKind::SetItem, "SetItem"},
+                              {ASTNodeKind::GetItem, "GetItem"}});
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(FunctionSignature, paramTypes, selfType,
                                    returnType);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PropKey, moduleID, idx, parentType);

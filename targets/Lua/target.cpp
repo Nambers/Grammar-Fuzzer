@@ -118,7 +118,7 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
             break;
         }
 
-    constexpr int NUM_SEED = 9;
+    constexpr int NUM_SEED = 11;
     data.ast.declarations.resize(NUM_SEED);
     data.ast.declarations[0] =
         ASTNode{ASTNodeKind::DeclareVar, {{"str_a"}, {"\"hello\""}}};
@@ -137,18 +137,24 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
     data.ast.declarations[7] =
         ASTNode{ASTNodeKind::DeclareVar, {{"tbl_a"}, {"{3, 1, 4, 1, 5, 9}"}}};
     data.ast.declarations[8] =
-        ASTNode{ASTNodeKind::DeclareVar, {{"tbl_b"}, {"{}"}}};
+        ASTNode{ASTNodeKind::DeclareVar, {{"tbl_b"}, {"{}"}}};  
+    data.ast.declarations[9] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"tbl_c"}, {"{[1]=10, [2]=20, [3]=30}"}}};
+    data.ast.declarations[10] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"tbl_d"}, {"{a=1, b=2, c=3}"}}};  // dict-like table
 
     data.ast.classProps[-1].resize(NUM_SEED);
-    data.ast.classProps[-1][0] = PropInfo{ctx.strID,  0, "str_a",  false};
-    data.ast.classProps[-1][1] = PropInfo{ctx.strID,  0, "str_b",  false};
-    data.ast.classProps[-1][2] = PropInfo{ctx.intID,  0, "num_a",  false};
-    data.ast.classProps[-1][3] = PropInfo{ctx.intID,  0, "num_b",  false};
-    data.ast.classProps[-1][4] = PropInfo{ctx.floatID, 0, "num_c", false};
-    data.ast.classProps[-1][5] = PropInfo{ctx.boolID, 0, "bool_a", false};
-    data.ast.classProps[-1][6] = PropInfo{ctx.boolID, 0, "bool_b", false};
-    data.ast.classProps[-1][7] = PropInfo{tableType, 0, "tbl_a",  false};
-    data.ast.classProps[-1][8] = PropInfo{tableType, 0, "tbl_b",  false};
+    data.ast.classProps[-1][0] = PropInfo{ctx.strID,   0, "str_a",  false};
+    data.ast.classProps[-1][1] = PropInfo{ctx.strID,   0, "str_b",  false};
+    data.ast.classProps[-1][2] = PropInfo{ctx.intID,   0, "num_a",  false};
+    data.ast.classProps[-1][3] = PropInfo{ctx.intID,   0, "num_b",  false};
+    data.ast.classProps[-1][4] = PropInfo{ctx.floatID, 0, "num_c",  false};
+    data.ast.classProps[-1][5] = PropInfo{ctx.boolID,  0, "bool_a", false};
+    data.ast.classProps[-1][6] = PropInfo{ctx.boolID,  0, "bool_b", false};
+    data.ast.classProps[-1][7] = PropInfo{tableType,   0, "tbl_a",  false};
+    data.ast.classProps[-1][8] = PropInfo{tableType,   0, "tbl_b",  false};
+    data.ast.classProps[-1][9] = PropInfo{tableType,   0, "tbl_c",  false};
+    data.ast.classProps[-1][10] = PropInfo{tableType,  0, "tbl_d",  false};
 
     data.ast.variables.resize(NUM_SEED);
     for (int i = 0; i < NUM_SEED; ++i) {

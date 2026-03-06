@@ -18,6 +18,8 @@ constexpr static std::array PICK_EXEC_WEIGHT = {
     3,  // BinaryOp
     2,  // UnaryOp
     7,  // NewInstance
+    8,  // SetItem
+    9,  // GetItem
 };
 
 static_assert(PICK_EXEC_WEIGHT.size() ==
@@ -239,17 +241,30 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
         }
 
         case ASTNodeKind::Return: {
-            if (scope.retType != -1 && scope.retNodeID != -1) {
-                const auto retVarKey =
-                    ctx.pickRandomVar(scopeID, scope.retType, ctx.pickConst());
-                if (retVarKey.empty()) {
+            if (scope.retType == -1) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            // Try to find a variable of the return type
+            const auto retVarKey =
+                ctx.pickRandomVar(scopeID, scope.retType, ctx.pickConst());
+            if (!retVarKey.empty()) {
+                const auto &retVar = unfoldKey(retVarKey, ast.ast, ctx).name;
+                curr.fields = {{retVar}};
+            } else {
+                // Fall back to literal return for common types
+                if (scope.retType == ctx.intID) {
+                    static std::uniform_int_distribution<int64_t> pickRet(-255, 255);
+                    curr.fields = {{pickRet(rng)}};
+                } else if (scope.retType == ctx.boolID) {
+                    curr.fields = {{(rng() % 2) == 0}};
+                } else if (scope.retType == ctx.strID) {
+                    curr.fields = {{std::string("\"\"")}};
+                } else {
                     state = MutationState::STATE_REROLL;
                     break;
                 }
-                const auto &retVar = unfoldKey(retVarKey, ast.ast, ctx).name;
-                curr.fields = {{retVar}};
-            } else
-                state = MutationState::STATE_REROLL;
+            }
             break;
         }
 
@@ -316,6 +331,151 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             // if (!a.isConst)
             //     globalVars.insert(a.name);
             insertGlobalVar(a, globalVars);
+            break;
+        }
+
+        case ASTNodeKind::SetItem: {
+            // container[index] = value
+            std::vector<TypeID> containerTypes;
+            if (ctx.listID > 0)
+                containerTypes.push_back(ctx.listID);
+            if (ctx.bytearrayID > 0)
+                containerTypes.push_back(ctx.bytearrayID);
+            if (ctx.dictID > 0)
+                containerTypes.push_back(ctx.dictID);
+            if (containerTypes.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            TypeID containerType =
+                containerTypes[rng() % containerTypes.size()];
+
+            const auto containerKey =
+                ctx.pickRandomVar(scopeID, containerType, false);
+            if (containerKey.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto &container = unfoldKey(containerKey, ast.ast, ctx);
+            auto containerName = container.name;
+            if (containerKey.parentType != -1) {
+                const auto parentKey = ctx.pickRandomVar(
+                    scopeID, containerKey.parentType, false);
+                if (parentKey.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                containerName =
+                    unfoldKey(parentKey, ast.ast, ctx).name + '.' +
+                    containerName;
+            }
+            insertGlobalVar(container, globalVars);
+
+            // Pick index: int for sequences, str or int for dict
+            TypeID indexType = (containerType == ctx.dictID)
+                                   ? (rng() % 2 == 0 ? ctx.strID : ctx.intID)
+                                   : ctx.intID;
+            const auto indexKey =
+                ctx.pickRandomVar(scopeID, indexType, ctx.pickConst());
+            if (indexKey.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto &indexVar = unfoldKey(indexKey, ast.ast, ctx);
+            auto indexName = indexVar.name;
+            insertGlobalVar(indexVar, globalVars);
+
+            // Pick value: any type (triggers __index__ on bytearray assignment)
+            const auto valueKey =
+                ctx.pickRandomVar(scopeID, ctx.pickConst());
+            if (valueKey.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto &value = unfoldKey(valueKey, ast.ast, ctx);
+            auto valueName = value.name;
+            if (valueKey.parentType != -1) {
+                const auto parentKey = ctx.pickRandomVar(
+                    scopeID, valueKey.parentType, false);
+                if (parentKey.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                valueName =
+                    unfoldKey(parentKey, ast.ast, ctx).name + '.' + valueName;
+            }
+            insertGlobalVar(value, globalVars);
+
+            curr.fields = {{containerName}, {indexName}, {valueName}};
+            break;
+        }
+
+        case ASTNodeKind::GetItem: {
+            // result = container[index]
+            std::vector<TypeID> containerTypes;
+            if (ctx.listID > 0)
+                containerTypes.push_back(ctx.listID);
+            if (ctx.bytearrayID > 0)
+                containerTypes.push_back(ctx.bytearrayID);
+            if (ctx.dictID > 0)
+                containerTypes.push_back(ctx.dictID);
+            if (ctx.strID > 0)
+                containerTypes.push_back(ctx.strID);
+            if (containerTypes.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            TypeID containerType =
+                containerTypes[rng() % containerTypes.size()];
+
+            const auto containerKey =
+                ctx.pickRandomVar(scopeID, containerType, ctx.pickConst());
+            if (containerKey.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto &container = unfoldKey(containerKey, ast.ast, ctx);
+            auto containerName = container.name;
+            if (containerKey.parentType != -1) {
+                const auto parentKey = ctx.pickRandomVar(
+                    scopeID, containerKey.parentType, ctx.pickConst());
+                if (parentKey.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                containerName =
+                    unfoldKey(parentKey, ast.ast, ctx).name + '.' +
+                    containerName;
+            }
+            insertGlobalVar(container, globalVars);
+
+            // Pick index
+            TypeID indexType = (containerType == ctx.dictID)
+                                   ? (rng() % 2 == 0 ? ctx.strID : ctx.intID)
+                                   : ctx.intID;
+            const auto indexKey =
+                ctx.pickRandomVar(scopeID, indexType, ctx.pickConst());
+            if (indexKey.empty()) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto &indexVar = unfoldKey(indexKey, ast.ast, ctx);
+            auto indexName = indexVar.name;
+            insertGlobalVar(indexVar, globalVars);
+
+            // Create result variable (type=object, will be updated by runtime)
+            curr.fields = {{ast.ast.nameCnt}, {containerName}, {indexName}};
+            {
+                auto &scope_ = ast.ast.scopes[scopeID];
+                scope_.variables.push_back(
+                    static_cast<VarID>(ast.ast.variables.size()));
+                ast.ast.variables.emplace_back(
+                    NO_MODULE, ast.ast.classProps[-1].size(), -1);
+                ast.ast.classProps[-1].emplace_back(0, scopeID,
+                                                    ast.ast.nameCnt, false);
+            }
+            globalVars.insert(ast.ast.nameCnt);
+            bumpIdentifier(ast.ast.nameCnt);
             break;
         }
 

@@ -169,8 +169,12 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
                        ctx.types.begin();
     TypeID listType = std::find(ctx.types.begin(), ctx.types.end(), "list") -
                       ctx.types.begin();
+    TypeID bytearrayType = std::find(ctx.types.begin(), ctx.types.end(), "bytearray") -
+                           ctx.types.begin();
+    TypeID dictType = std::find(ctx.types.begin(), ctx.types.end(), "dict") -
+                      ctx.types.begin();
 
-    constexpr int NUM_SEED = 9;
+    constexpr int NUM_SEED = 11;
     data.ast.declarations.resize(NUM_SEED);
     data.ast.declarations[0] =
         ASTNode{ASTNodeKind::DeclareVar, {{"str_a"}, {"\"hello\""}}};
@@ -190,17 +194,23 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
         ASTNode{ASTNodeKind::DeclareVar, {{"bool_b"}, {false}}};
     data.ast.declarations[8] =
         ASTNode{ASTNodeKind::DeclareVar, {{"list_a"}, {"[3, 1, 4, 1, 5]"}}};
+    data.ast.declarations[9] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"ba_a"}, {"bytearray(56)"}}};
+    data.ast.declarations[10] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"dict_a"}, {"{}"}}};
 
     data.ast.classProps[-1].resize(NUM_SEED);
-    data.ast.classProps[-1][0] = PropInfo{ctx.strID,   0, "str_a",   false};
-    data.ast.classProps[-1][1] = PropInfo{ctx.strID,   0, "str_b",   false};
-    data.ast.classProps[-1][2] = PropInfo{bytesType,   0, "byte_a",  false};
-    data.ast.classProps[-1][3] = PropInfo{ctx.intID,   0, "int_a",   false};
-    data.ast.classProps[-1][4] = PropInfo{ctx.intID,   0, "int_b",   false};
-    data.ast.classProps[-1][5] = PropInfo{ctx.floatID, 0, "float_a", false};
-    data.ast.classProps[-1][6] = PropInfo{ctx.boolID,  0, "bool_a",  false};
-    data.ast.classProps[-1][7] = PropInfo{ctx.boolID,  0, "bool_b",  false};
-    data.ast.classProps[-1][8] = PropInfo{listType,    0, "list_a",  false};
+    data.ast.classProps[-1][0] = PropInfo{ctx.strID,      0, "str_a",   false};
+    data.ast.classProps[-1][1] = PropInfo{ctx.strID,      0, "str_b",   false};
+    data.ast.classProps[-1][2] = PropInfo{bytesType,      0, "byte_a",  false};
+    data.ast.classProps[-1][3] = PropInfo{ctx.intID,      0, "int_a",   false};
+    data.ast.classProps[-1][4] = PropInfo{ctx.intID,      0, "int_b",   false};
+    data.ast.classProps[-1][5] = PropInfo{ctx.floatID,    0, "float_a", false};
+    data.ast.classProps[-1][6] = PropInfo{ctx.boolID,     0, "bool_a",  false};
+    data.ast.classProps[-1][7] = PropInfo{ctx.boolID,     0, "bool_b",  false};
+    data.ast.classProps[-1][8] = PropInfo{listType,       0, "list_a",  false};
+    data.ast.classProps[-1][9] = PropInfo{bytearrayType,  0, "ba_a",    false};
+    data.ast.classProps[-1][10] = PropInfo{dictType,      0, "dict_a",  false};
 
     data.ast.variables.resize(NUM_SEED);
     for (int i = 0; i < NUM_SEED; ++i) {

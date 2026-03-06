@@ -25,12 +25,54 @@ BLACKLIST = {
     "Ellipsis",
     "NotImplemented",
     "Error",
-    "__",
     "copyright",
     "license",
     "credits",
     "breakpoint",
 }
+
+# Dunder methods that are dangerous or useless for fuzzing.
+# All other dunders (__index__, __len__, __init__, __getitem__, etc.)
+# are allowed — they trigger deep CPython internal paths.
+BLACKLIST_DUNDERS = {
+    "__import__",
+    "__loader__",
+    "__spec__",
+    "__builtins__",
+    "__build_class__",
+    "__debug__",
+    "__doc__",
+    "__name__",
+    "__qualname__",
+    "__module__",
+    "__dict__",
+    "__weakref__",
+    "__subclasshook__",
+    "__init_subclass__",
+    "__class_getitem__",
+    "__class__",
+    "__del__",
+    "__getattribute__",
+    "__setattr__",
+    "__delattr__",
+    "__reduce__",
+    "__reduce_ex__",
+    "__sizeof__",
+    "__dir__",
+    "__format__",
+    "__abstractmethods__",
+    "__type_params__",
+    "__firstlineno__",
+    "__static_attributes__",
+}
+
+
+def is_blacklisted(name: str) -> bool:
+    return (
+        name in BLACKLIST
+        or name in BLACKLIST_DUNDERS
+        or any(a in name for a in BLACKLIST)
+    )
 
 
 def is_name_assignable(name: str) -> bool:
@@ -147,7 +189,7 @@ def collect_class_methods(cls, qualified_name=None):
     clsname = qualified_name or cls.__name__
     methods[clsname] = []
     for attr_name, attr in cls.__dict__.items():
-        if attr_name in BLACKLIST or any(a in attr_name for a in BLACKLIST):
+        if is_blacklisted(attr_name):
             continue
         method_type = "instance"
         if isinstance(attr, staticmethod):
@@ -177,7 +219,7 @@ def collect_module_functions(module, qualified_name=None):
     modname = qualified_name or module.__name__
     functions[modname] = []
     for attr_name in dir(module):
-        if attr_name in BLACKLIST or any(a in attr_name for a in BLACKLIST):
+        if is_blacklisted(attr_name):
             continue
         attr = getattr(module, attr_name)
         if _isbuiltiin(attr):
@@ -208,7 +250,7 @@ def collect_all(enable_builtins=False, results=None):
         results["funcs"]["-1"] = []  # Default for builtins
         for name in dir(builtins):
             obj = getattr(builtins, name)
-            if name not in BLACKLIST and not any(a in name for a in BLACKLIST):
+            if not is_blacklisted(name):
                 if _isclass(obj):
                     results["funcs"].update(collect_class_methods(obj, name))
                 else:
