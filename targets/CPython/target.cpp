@@ -389,40 +389,78 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
             }
             // otherwise is not this template error
         }
-        if (errMsg.contains(" expected at ") &&
-            errMsg.contains(" arguments, got ") && !handled) {
-            if (node->kind == ASTNodeKind::Call) {
-                // e.g. rfind expected at most 3 arguments, got 4
-                std::regex regexPattern(
-                    R"((\S+) expected at (?:most|least) (\d+) arguments, got (\d+))");
-                std::smatch match;
-                if (std::regex_search(errMsg, match, regexPattern)) {
-                    int expectedArgs = std::stoi(match[2]);
-                    const std::string &funcName =
-                        std::get<std::string>(node->fields[1].val);
-                    const auto p = funcName.find('.');
-                    if (p != std::string::npos) {
-                        const std::string &typeName = funcName.substr(0, p);
-                        const std::string &methodName = funcName.substr(p + 1);
-                        TypeID tid = resolveType(typeName, ctx, ast, 0);
-                        if (tid > 0) {
-                            auto &methods = tid < ctx.builtinTypesCnt
-                                                ? ctx.builtinsProps[tid]
-                                                : ast.classProps[tid];
-                            auto it = std::find_if(
-                                methods.begin(), methods.end(),
-                                [&methodName](const PropInfo &prop) {
-                                    return prop.name == methodName;
-                                });
-                            if (it != methods.end()) {
-                                // remove the last param type
-                                it->funcSig.paramTypes.resize(expectedArgs);
-                                INFO("Updated method '{}' to have {} "
-                                     "arguments",
-                                     methodName, expectedArgs);
-                                handled = true;
-                            }
+        // Argument-count errors — three CPython error formats:
+        //   (A) "rfind expected at most 3 arguments, got 4"
+        //   (B) "iter() takes from 1 to 2 positional arguments but 0 were given"
+        //   (C) "issubclass() takes exactly 2 arguments (0 given)"
+        if (!handled && node && node->kind == ASTNodeKind::Call) {
+            enum class ArgCountFmt { None, AtMostLeast, TakesFrom, TakesExactly };
+            static const std::regex reAtMostLeast(
+                R"((\S+) expected at (?:most|least) (\d+) arguments, got (\d+))");
+            static const std::regex reTakesFrom(
+                R"(\S+\(\) takes from (\d+) to \d+ positional arguments but \d+ were given)");
+            static const std::regex reTakesExactly(
+                R"(\S+\(\) takes exactly (\d+) arguments \(\d+ given\))");
+
+            ArgCountFmt fmt = ArgCountFmt::None;
+            int correctArgs = 0;
+            std::smatch match;
+
+            if (errMsg.contains(" expected at ") &&
+                errMsg.contains(" arguments, got ") &&
+                std::regex_search(errMsg, match, reAtMostLeast)) {
+                correctArgs = std::stoi(match[2]);
+                fmt = ArgCountFmt::AtMostLeast;
+            } else if (errMsg.contains(" takes from ") &&
+                       errMsg.contains(" positional arguments but ") &&
+                       std::regex_search(errMsg, match, reTakesFrom)) {
+                correctArgs = std::stoi(match[1]);
+                fmt = ArgCountFmt::TakesFrom;
+            } else if (errMsg.contains(" takes exactly ") &&
+                       errMsg.contains(" arguments (") &&
+                       std::regex_search(errMsg, match, reTakesExactly)) {
+                correctArgs = std::stoi(match[1]);
+                fmt = ArgCountFmt::TakesExactly;
+            }
+
+            if (fmt != ArgCountFmt::None) {
+                const std::string &funcName =
+                    std::get<std::string>(node->fields[1].val);
+                const auto p = funcName.find('.');
+                if (p != std::string::npos) {
+                    // method call: TypeName.methodName
+                    const std::string &typeName = funcName.substr(0, p);
+                    const std::string &methodName = funcName.substr(p + 1);
+                    TypeID tid = resolveType(typeName, ctx, ast, 0);
+                    if (tid > 0) {
+                        auto &methods = tid < ctx.builtinTypesCnt
+                                            ? ctx.builtinsProps[tid]
+                                            : ast.classProps[tid];
+                        auto it = std::find_if(
+                            methods.begin(), methods.end(),
+                            [&methodName](const PropInfo &prop) {
+                                return prop.name == methodName;
+                            });
+                        if (it != methods.end()) {
+                            it->funcSig.paramTypes.resize(correctArgs);
+                            INFO("Updated method '{}' to have {} arguments",
+                                 methodName, correctArgs);
+                            handled = true;
                         }
+                    }
+                } else {
+                    // free function — search builtins[-1]
+                    auto &funcs = ctx.builtinsProps.at(-1);
+                    auto it = std::find_if(
+                        funcs.begin(), funcs.end(),
+                        [&funcName](const PropInfo &prop) {
+                            return prop.name == funcName && prop.isCallable;
+                        });
+                    if (it != funcs.end()) {
+                        it->funcSig.paramTypes.resize(correctArgs);
+                        INFO("Updated free function '{}' to have {} arguments",
+                             funcName, correctArgs);
+                        handled = true;
                     }
                 }
             }

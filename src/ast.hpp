@@ -21,6 +21,7 @@ constexpr ModuleID NO_MODULE = -1;
 constexpr ModuleID BUILTIN_MODULE_ID = 0;
 
 constexpr size_t SCOPE_MAX_TYPE = 200;
+constexpr size_t MAX_SCOPE_CNT = 50;
 constexpr std::array BINARY_OPS{"+",  "-",  "*",  "/", "%",  "**",
                                 "//", "==", "!=", "<", ">",  "<=",
                                 ">=", "&",  "|",  "^", "<<", ">>"};

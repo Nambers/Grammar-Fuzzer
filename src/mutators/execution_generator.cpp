@@ -186,6 +186,9 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                                                     newVarName, false);
                 globalVars.insert(newVarName);
             }
+            
+            // if it's method, we should skip first self variable caused it's imply by `x.x`
+            size_t i = 0;
 
             if (funcKey.parentType != -1) {
                 if (sig.selfType != -1) {
@@ -203,6 +206,7 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                     curr.fields[1] = {selfVar.name + '.' + fname};
                     // or static usage: yyy(xxx, ...)
                     // curr.fields.push_back({selfVar});
+                    i = 1;
                 } else {
                     // static method
                     curr.fields[1] = {
@@ -212,7 +216,7 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             }
 
             // parameters
-            for (auto i = 0; i < sig.paramTypes.size(); ++i) {
+            for (; i < sig.paramTypes.size(); ++i) {
                 auto paramType = sig.paramTypes[i];
                 const auto paramVarKey =
                     ctx.pickRandomVar(scopeID, paramType, ctx.pickConst());
@@ -241,13 +245,13 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
         }
 
         case ASTNodeKind::Return: {
-            if (scope.retType == -1) {
-                state = MutationState::STATE_REROLL;
-                break;
-            }
+            // if (scope.retType == -1) {
+            //     state = MutationState::STATE_REROLL;
+            //     break;
+            // }
             // Try to find a variable of the return type
             const auto retVarKey =
-                ctx.pickRandomVar(scopeID, scope.retType, ctx.pickConst());
+                ctx.pickRandomVar(scopeID, 0, ctx.pickConst()); // disrespect original return type to check if crash
             if (!retVarKey.empty()) {
                 const auto &retVar = unfoldKey(retVarKey, ast.ast, ctx).name;
                 curr.fields = {{retVar}};

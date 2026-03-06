@@ -91,7 +91,12 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
     while (state == MutationState::STATE_REROLL) {
         state = MutationState::STATE_OK;
         // do other mutations
-        MutationPick pick = static_cast<MutationPick>(dist(rng));
+        MutationPick pick;
+        if (ast.scopes.size() > MAX_SCOPE_CNT)
+            pick = static_cast<MutationPick>(static_cast<int>(pick) % 2);
+        else
+            pick = static_cast<MutationPick>(dist(rng));
+
         switch (pick) {
             /* ----------  AddFunction  ---------- */
         case MutationPick::AddFunction: {
@@ -147,22 +152,14 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 fun.scope = funSid;
                 fun.fields.emplace_back(picked.name);
                 fun.fields.emplace_back(picked.funcSig.returnType);
-                // Add self parameter for instance methods
-                fun.fields.emplace_back(std::string("self"));
-                fun.fields.emplace_back(0); // type = object, TODO set type to itself
             }
 
             ast.declarations[clsID].fields.emplace_back(funNodeID);
 
             {
                 ASTScope &funScope = ast.scopes[funSid];
-                // Register self as scope variable
-                funScope.variables.push_back(ast.variables.size());
-                ast.variables.emplace_back(NO_MODULE,
-                                           ast.classProps[-1].size(), -1);
-                ast.classProps[-1].emplace_back(0, funSid, "self", false,
-                                                false, true);
                 std::string arg = "arg_a";
+                // the first arg equiv to self
                 for (TypeID pt : picked.funcSig.paramTypes) {
                     ast.declarations[funNodeID].fields.emplace_back(arg);
 
@@ -258,21 +255,13 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     fun.scope = funSid;
                     fun.fields.emplace_back("__init__");
                     fun.fields.emplace_back(-1);
-                    // Add self parameter
-                    fun.fields.emplace_back(std::string("self"));
-                    fun.fields.emplace_back(0); // TODO set type to itself
                 }
 
                 ast.scopes.emplace_back(sid, 0);
 
                 auto &funScope = ast.scopes[funSid];
-                // Register self as scope variable
-                funScope.variables.push_back(ast.variables.size());
-                ast.variables.emplace_back(NO_MODULE,
-                                           ast.classProps[-1].size(), -1);
-                ast.classProps[-1].emplace_back(0, funSid, "self", false,
-                                                false, true);
                 std::string arg = "arg_a";
+                // first arg is equiv to self
                 for (TypeID pt :
                      func->funcSig.paramTypes) { // [param‑types ...]
                     auto &fun = ast.declarations[funID];
