@@ -164,10 +164,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     ast.declarations[funNodeID].fields.emplace_back(arg);
 
                     funScope.variables.push_back(ast.variables.size());
-                    ast.variables.emplace_back(NO_MODULE,
-                                               ast.classProps[-1].size(), -1);
-                    ast.classProps[-1].emplace_back(pt, funSid, arg, false,
-                                                    false, true);
+                    ast.variables.emplace_back(
+                        NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(), NOT_UNDER_CLASS);
+                    ast.classProps[NOT_UNDER_CLASS].emplace_back(pt, funSid, arg,
+                                                          false, false, true);
                     bumpIdentifier(arg);
                     ast.declarations[funNodeID].fields.emplace_back(pt);
                 }
@@ -179,7 +179,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
         /* ----------  AddClass  ---------- */
         case MutationPick::AddClass: {
             if (ast.scopes[sid].parent != -1) {
-                // TODO rn don't do nested class
+                // don't do nested class
                 state = MutationState::STATE_REROLL;
                 break;
             }
@@ -234,7 +234,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 scope.inheritedTypes.push_back(inheritType);
             }
             // sentinel
-            cls.fields.push_back({-1});
+            cls.fields.push_back(SENTINEL_NODE);
 
             // check if has init class, if so, add it as function and do super
             // call
@@ -254,7 +254,8 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     fun.kind = ASTNodeKind::Function;
                     fun.scope = funSid;
                     fun.fields.emplace_back("__init__");
-                    fun.fields.emplace_back(-1);
+                    // __init__ function don't have return type
+                    fun.fields.emplace_back(NO_RETURN);
                 }
 
                 ast.scopes.emplace_back(sid, 0);
@@ -267,10 +268,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     auto &fun = ast.declarations[funID];
                     fun.fields.emplace_back(arg);
                     funScope.variables.push_back(ast.variables.size());
-                    ast.variables.emplace_back(NO_MODULE,
-                                               ast.classProps[-1].size(), -1);
-                    ast.classProps[-1].emplace_back(pt, funSid, arg, false,
-                                                    false, true);
+                    ast.variables.emplace_back(
+                        NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(), NOT_UNDER_CLASS);
+                    ast.classProps[NOT_UNDER_CLASS].emplace_back(pt, funSid, arg,
+                                                          false, false, true);
                     bumpIdentifier(arg);
                     fun.fields.emplace_back(pt);
                 }
@@ -313,25 +314,11 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     // get all args
                     std::unordered_set<std::string> globalVars;
                     globalVars.reserve(sig->paramTypes.size());
-                    auto callExpr = std::string(typeName) + "(";
-                    for (size_t i = 0; i < sig->paramTypes.size(); ++i) {
-                        if (i > 0)
-                            callExpr += ", ";
-                        const auto varNameKey = ctx.pickRandomVar(
-                            sid, sig->paramTypes[i], ctx.pickConst());
-                        if (varNameKey.empty()) {
-                            state = MutationState::STATE_REROLL;
-                            break;
-                        }
-                        const auto &varProp = unfoldKey(varNameKey, ast, ctx);
-                        callExpr += varProp.name;
-                        insertGlobalVar(varProp, globalVars);
-                        // if (!varProp.isConst && !varProp.isArg)
-                        //     globalVars.insert(varProp.name);
-                    }
-                    if (state == MutationState::STATE_REROLL)
+                    auto callExpr = buildFunctionCallG(sig->paramTypes, sid,
+                                                       ast, ctx, globalVars);
+                    if (callExpr.empty())
                         break; // reroll if failed to pick vars
-                    var.fields[1].val = callExpr + ")";
+                    var.fields[1].val = typeName + callExpr;
                     if (!globalVars.empty() && sid != 0) {
                         // filter out global variables
                         for (auto it = globalVars.begin();
@@ -365,9 +352,9 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
 
                 NodeID varID = ast.declarations.size();
                 scope.variables.push_back(ast.variables.size());
-                ast.variables.emplace_back(NO_MODULE, ast.classProps[-1].size(),
-                                           -1);
-                ast.classProps[-1].emplace_back(
+                ast.variables.emplace_back(
+                    NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(), NOT_UNDER_CLASS);
+                ast.classProps[NOT_UNDER_CLASS].emplace_back(
                     tid, sid, std::get<std::string>(var.fields[0].val));
                 scope.declarations.push_back(varID);
             }

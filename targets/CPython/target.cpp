@@ -1,9 +1,9 @@
-#include <Python.h> // Python.h should be first to include
-#include "target.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "dumper.hpp"
 #include "log.hpp"
+#include "target.hpp"
+#include <Python.h> // Python.h should be first to include
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -169,8 +169,9 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
                        ctx.types.begin();
     TypeID listType = std::find(ctx.types.begin(), ctx.types.end(), "list") -
                       ctx.types.begin();
-    TypeID bytearrayType = std::find(ctx.types.begin(), ctx.types.end(), "bytearray") -
-                           ctx.types.begin();
+    TypeID bytearrayType =
+        std::find(ctx.types.begin(), ctx.types.end(), "bytearray") -
+        ctx.types.begin();
     TypeID dictType = std::find(ctx.types.begin(), ctx.types.end(), "dict") -
                       ctx.types.begin();
 
@@ -199,20 +200,31 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
     data.ast.declarations[10] =
         ASTNode{ASTNodeKind::DeclareVar, {{"dict_a"}, {"{}"}}};
 
-    data.ast.classProps[-1].resize(NUM_SEED);
-    data.ast.classProps[-1][0] = PropInfo{ctx.strID,      0, "str_a",   false};
-    data.ast.classProps[-1][1] = PropInfo{ctx.strID,      0, "str_b",   false};
-    data.ast.classProps[-1][2] = PropInfo{bytesType,      0, "byte_a",  false};
-    data.ast.classProps[-1][3] = PropInfo{ctx.intID,      0, "int_a",   false};
-    data.ast.classProps[-1][4] = PropInfo{ctx.intID,      0, "int_b",   false};
-    data.ast.classProps[-1][5] = PropInfo{ctx.floatID,    0, "float_a", false};
-    data.ast.classProps[-1][6] = PropInfo{ctx.boolID,     0, "bool_a",  false};
-    data.ast.classProps[-1][7] = PropInfo{ctx.boolID,     0, "bool_b",  false};
-    data.ast.classProps[-1][8] = PropInfo{listType,       0, "list_a",  false};
-    data.ast.classProps[-1][9] = PropInfo{bytearrayType,  0, "ba_a",    false};
-    data.ast.classProps[-1][10] = PropInfo{dictType,      0, "dict_a",  false};
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{ctx.strID, 0, "str_a"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{ctx.strID, 0, "str_b"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{bytesType, 0, "byte_a"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{ctx.intID, 0, "int_a"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{ctx.intID, 0, "int_b"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{ctx.floatID, 0, "float_a"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{ctx.boolID, 0, "bool_a"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{ctx.boolID, 0, "bool_b"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{listType, 0, "list_a"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{bytearrayType, 0, "ba_a"});
+    data.ast.classProps[NOT_UNDER_CLASS].push_back(
+        PropInfo{dictType, 0, "dict_a"});
 
     data.ast.variables.resize(NUM_SEED);
+
     for (int i = 0; i < NUM_SEED; ++i) {
         data.ast.variables[i] = PropKey{NO_MODULE, static_cast<size_t>(i), -1};
         data.ast.scopes[0].declarations.push_back(i);
@@ -391,10 +403,15 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
         }
         // Argument-count errors — three CPython error formats:
         //   (A) "rfind expected at most 3 arguments, got 4"
-        //   (B) "iter() takes from 1 to 2 positional arguments but 0 were given"
-        //   (C) "issubclass() takes exactly 2 arguments (0 given)"
+        //   (B) "iter() takes from 1 to 2 positional arguments but 0 were
+        //   given" (C) "issubclass() takes exactly 2 arguments (0 given)"
         if (!handled && node && node->kind == ASTNodeKind::Call) {
-            enum class ArgCountFmt { None, AtMostLeast, TakesFrom, TakesExactly };
+            enum class ArgCountFmt {
+                None,
+                AtMostLeast,
+                TakesFrom,
+                TakesExactly
+            };
             static const std::regex reAtMostLeast(
                 R"((\S+) expected at (?:most|least) (\d+) arguments, got (\d+))");
             static const std::regex reTakesFrom(
@@ -436,11 +453,11 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                         auto &methods = tid < ctx.builtinTypesCnt
                                             ? ctx.builtinsProps[tid]
                                             : ast.classProps[tid];
-                        auto it = std::find_if(
-                            methods.begin(), methods.end(),
-                            [&methodName](const PropInfo &prop) {
-                                return prop.name == methodName;
-                            });
+                        auto it =
+                            std::find_if(methods.begin(), methods.end(),
+                                         [&methodName](const PropInfo &prop) {
+                                             return prop.name == methodName;
+                                         });
                         if (it != methods.end()) {
                             it->funcSig.paramTypes.resize(correctArgs);
                             INFO("Updated method '{}' to have {} arguments",
@@ -451,11 +468,11 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                 } else {
                     // free function — search builtins[-1]
                     auto &funcs = ctx.builtinsProps.at(-1);
-                    auto it = std::find_if(
-                        funcs.begin(), funcs.end(),
-                        [&funcName](const PropInfo &prop) {
-                            return prop.name == funcName && prop.isCallable;
-                        });
+                    auto it = std::find_if(funcs.begin(), funcs.end(),
+                                           [&funcName](const PropInfo &prop) {
+                                               return prop.name == funcName &&
+                                                      prop.isCallable;
+                                           });
                     if (it != funcs.end()) {
                         it->funcSig.paramTypes.resize(correctArgs);
                         INFO("Updated free function '{}' to have {} arguments",
@@ -684,6 +701,8 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
             tmpMethods[typeID].clear();
         auto &vec = tmpMethods[typeID];
         for (auto &item : arr) {
+            if (!item.contains("scope"))
+                item["scope"] = sid;
             if (item.contains("type"))
                 item["type"] =
                     resolveType(item["type"].get<std::string>(), ctx, ast, sid);
@@ -703,9 +722,9 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
     }
 
     // TODO current just insert anything news bc the classProps is both managed
-    // by manually and auto.
+    //& by manually and auto.
     for (auto &[tid, vec] : tmpMethods) {
-        auto vec1 = ast.classProps[tid];
+        auto &vec1 = ast.classProps[tid];
         if (vec1.empty()) {
             vec1.swap(vec);
             continue;
@@ -713,7 +732,7 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
         std::unordered_set<PropInfo, PropInfo::Hash> set1(vec1.begin(),
                                                           vec1.end());
         for (const auto &item : vec) {
-            if (set1.contains(item)) {
+            if (!set1.contains(item)) {
                 vec1.push_back(item);
             }
         }
@@ -726,7 +745,7 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
             scope.types.push_back(types[i]);
         }
     }
-    ctx.update(ast);
+    ctx.updateVars(ast);
     return 0;
 }
 

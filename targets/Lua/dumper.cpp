@@ -107,8 +107,7 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
         valueToLua(out, node.fields[0], ast, ctx, indentLevel);
         out << " = ";
         valueToLua(out, node.fields[1], ast, ctx, indentLevel);
-        const char *op =
-            mapBinaryOp(std::get<std::string>(node.fields[2].val));
+        const char *op = mapBinaryOp(std::get<std::string>(node.fields[2].val));
         out << ' ' << op << ' ';
         valueToLua(out, node.fields[3], ast, ctx, indentLevel);
         break;
@@ -118,8 +117,7 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
     case ASTNodeKind::UnaryOp: {
         valueToLua(out, node.fields[0], ast, ctx, indentLevel);
         out << " = ";
-        const char *op =
-            mapUnaryOp(std::get<std::string>(node.fields[1].val));
+        const char *op = mapUnaryOp(std::get<std::string>(node.fields[1].val));
         out << op << ' ';
         valueToLua(out, node.fields[2], ast, ctx, indentLevel);
         break;
@@ -155,12 +153,11 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
         size_t idx = 1;
         for (; idx < node.fields.size(); ++idx) {
             if (std::holds_alternative<int64_t>(node.fields[idx].val) &&
-                std::get<int64_t>(node.fields[idx].val) == -1) {
+                node.fields[idx] == SENTINEL_NODE) {
                 ++idx;
                 break;
             }
-            const auto &baseName =
-                std::get<std::string>(node.fields[idx].val);
+            const auto &baseName = std::get<std::string>(node.fields[idx].val);
             // Skip primitive type names that aren't valid Lua tables.
             // "number", "boolean", "nil", "string", "object", "math" cannot
             // be used as __index bases — only user-defined class names and
@@ -181,8 +178,7 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
             NodeID fnID =
                 static_cast<NodeID>(std::get<int64_t>(node.fields[i].val));
             const auto &fn = ast.declarations[fnID];
-            const std::string &fnName =
-                std::get<std::string>(fn.fields[0].val);
+            const std::string &fnName = std::get<std::string>(fn.fields[0].val);
             // metamethods start with __ but exclude __init__ and __index
             if (fnName.size() > 2 && fnName[0] == '_' && fnName[1] == '_' &&
                 fnName != "__init__" && fnName != "__index") {
@@ -217,16 +213,14 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
                 static_cast<NodeID>(std::get<int64_t>(node.fields[idx].val));
             out << '\n';
             const auto &fn = ast.declarations[fnID];
-            const std::string &fnName =
-                std::get<std::string>(fn.fields[0].val);
+            const std::string &fnName = std::get<std::string>(fn.fields[0].val);
 
             // emit as ClassName:method(...)  — self is implicit via ':'
-            size_t pCnt =
-                fn.fields.size() > 2 ? (fn.fields.size() - 2) / 2 : 0;
+            size_t pCnt = fn.fields.size() > 2 ? (fn.fields.size() - 2) / 2 : 0;
             // Skip 'self' parameter (first param) in the signature since
             // ':' syntax provides it implicitly
-            bool hasSelf = (pCnt > 0 &&
-                std::get<std::string>(fn.fields[2].val) == "self");
+            bool hasSelf =
+                (pCnt > 0 && std::get<std::string>(fn.fields[2].val) == "self");
             size_t startParam = hasSelf ? 1 : 0;
             out << ind << "function " << name << ":" << fnName << "(";
             for (size_t p = startParam; p < pCnt; ++p) {
@@ -289,7 +283,7 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
 void FuzzingAST::scopeToLua(std::ostringstream &out, ScopeID sid,
                             const AST &ast, const BuiltinContext &ctx,
                             int indentLevel) {
-    if (sid == -1)
+    if (sid == EMPTY_SCOPE)
         return;
     out << std::string(indentLevel * 4, ' ') << "-- scope " << sid << '\n';
     const ASTScope &scope = ast.scopes[sid];

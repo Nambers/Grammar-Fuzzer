@@ -1,161 +1,110 @@
 #include "ast.hpp"
+#include <algorithm>
+#include <iostream>
 #include <random>
 
 extern std::mt19937 rng;
 
 using namespace FuzzingAST;
 
+static inline auto makeIndexDist(size_t size) {
+    return std::uniform_int_distribution<size_t>(0, size > 0 ? size - 1 : 0);
+}
+
 void BuiltinContext::updateVars(const AST &ast) {
     size_t n = ast.scopes.size();
-    mutableIndex_.assign(n, {});
-    constIndex_.assign(n, {});
+    scopeProviders.assign(n, {});
     typeList_.assign(n, {});
     typeDist_.assign(n, {});
-    varDist_.assign(n, {});
 
-    for (size_t i = 0; i < n; ++i) {
-        if (int p = ast.scopes[i].parent; p != -1) {
-            mutableIndex_[i] = mutableIndex_[p];
-            constIndex_[i] = constIndex_[p];
+    // any function is callable in scope, if they had variable for class
+    // any variable in class should be usable in parent and child scope, if they
+    // had variable for class but right now we lucky don't need to consider
+    // child scope, since we don't allow nested class or function definition
+
+    for (const auto &[tid, pis] : ast.classProps) {
+        for (size_t j = 0; j < pis.size(); ++j) {
+            const auto &pi = pis[j];
+
+            auto &index = scopeProviders.at(pi.scope).selectIndex(pi);
+            index[pi.type].emplace_back(NO_MODULE, j, tid);
+            index[0].emplace_back(NO_MODULE, j,
+                                  tid); // fallback to add to object
         }
+    }
 
-        for (const auto &[tid, pis] : ast.classProps) {
-            for (size_t j = 0; j < pis.size(); ++j) {
-                const auto &pi = pis[j];
-                if (pi.scope > static_cast<ScopeID>(i))
-                    continue;
-
-                auto &index = pi.isConst ? constIndex_ : mutableIndex_;
-                index[i][pi.type].emplace_back(NO_MODULE, j, tid);
-                index[i][0].emplace_back(NO_MODULE, j, tid); // fallback
-            }
+    for (const auto &kv : builtinsProps) {
+        TypeID parentType = kv.first;
+        const auto &pis = kv.second;
+        for (size_t j = 0; j < pis.size(); ++j) {
+            const auto &pi = pis[j];
+            auto &index = scopeProviders[0].selectIndex(pi);
+            index[pi.type].emplace_back(BUILTIN_MODULE_ID, j, parentType);
+            index[0].emplace_back(BUILTIN_MODULE_ID, j,
+                                  parentType); // fallback
         }
+    }
 
-        for (const auto &kv : builtinsProps) {
+    for (auto mid : ast.importedModules) {
+        for (const auto &kv : modulesProps[mid]) {
             TypeID parentType = kv.first;
             const auto &pis = kv.second;
             for (size_t j = 0; j < pis.size(); ++j) {
                 const auto &pi = pis[j];
-                // Skip callable entries in the function index
-                if (pi.isCallable)
-                    continue;
-                auto &index = pi.isConst ? constIndex_ : mutableIndex_;
-                index[i][pi.type].emplace_back(BUILTIN_MODULE_ID, j,
-                                               parentType);
-                index[i][0].emplace_back(BUILTIN_MODULE_ID, j,
-                                         parentType); // fallback
+                auto &index = scopeProviders[0].selectIndex(pi);
+                index[pi.type].emplace_back(mid, j, parentType);
+                index[0].emplace_back(mid, j,
+                                      parentType); // fallback
             }
         }
+    }
 
-        for (auto mid : ast.importedModules) {
-            for (const auto &kv : modulesProps[mid]) {
-                TypeID parentType = kv.first;
-                const auto &pis = kv.second;
-                for (size_t j = 0; j < pis.size(); ++j) {
-                    const auto &pi = pis[j];
-                    // Skip callable module entries - same rationale as builtins
-                    if (pi.isCallable)
-                        continue;
-                    auto &index = pi.isConst ? constIndex_ : mutableIndex_;
-                    index[i][pi.type].emplace_back(mid, j, parentType);
-                    index[i][0].emplace_back(mid, j,
-                                             parentType); // fallback
-                }
-            }
-        }
+    // update distribution
+    for (size_t i = 0; i < n; ++i) {
+        // current scope provider
+        auto &pd = scopeProviders[i];
 
         auto &types = typeList_[i];
-        for (const auto &kv : mutableIndex_[i]) {
+        if (i == 0)
+            types.clear();
+        else
+            // types(typeList_[ast.scopes[i].parent].begin(),
+            //              typeList_[ast.scopes[i].parent].end());
+            types = typeList_[ast.scopes[i].parent];
+
+        for (const auto &kv : pd.constIndex) {
             // only interested with those types can be interacted with
-            if (!builtinsProps.contains(kv.first) &&
-                !ast.classProps.contains(kv.first))
+            if (kv.second.empty() || (std::find(types.begin(), types.end(),
+                                                kv.first) != types.end()))
                 continue;
-            if (!kv.second.empty())
-                types.push_back(kv.first);
-        }
-        if (!types.empty()) {
-            typeDist_[i] =
-                std::uniform_int_distribution<size_t>(0, types.size() - 1);
-            for (auto t : types) {
-                varDist_[i][t] = {std::uniform_int_distribution<size_t>(
-                                      0, mutableIndex_[i][t].size() - 1),
-                                  std::uniform_int_distribution<size_t>(
-                                      0, constIndex_[i][t].size() - 1)};
-            }
-        }
-    }
-}
 
-/*------------------ updateFuncs ------------------*/
-void BuiltinContext::updateFuncs(const AST &ast) {
-    size_t n = ast.scopes.size();
-    funcList_.assign(n, {});
-    funcDist_.assign(n, {});
-    funcCnts_.assign(n, 0);
-    methodDist_.clear();
-
-    for (auto &[tid, props] : builtinsProps) {
-        if (methodDist_.find(tid) == methodDist_.end()) {
-            size_t s = props.size();
-            if (ast.classProps.contains(tid))
-                s += ast.classProps.at(tid).size();
-            if (s)
-                methodDist_.emplace(
-                    tid, std::uniform_int_distribution<size_t>(0, s - 1));
-        }
-    }
-
-    for (const auto &[tid, props] : ast.classProps) {
-        if (methodDist_.contains(tid))
-            continue; // already added in builtinsProps
-        size_t s = props.size();
-        if (s)
-            methodDist_.emplace(
-                tid, std::uniform_int_distribution<size_t>(0, s - 1));
-    }
-
-    for (size_t i = 0; i < n; ++i) {
-        std::vector<PropKey> cands;
-        cands.reserve(128);
-
-        for (auto &kv : ast.classProps) {
-            TypeID tid = kv.first;
-            auto &vec = kv.second;
-            for (size_t j = 0; j < vec.size(); ++j) {
-                const auto &pi = vec[j];
-                if (pi.isCallable && pi.scope <= (ScopeID)i) {
-                    cands.emplace_back(NO_MODULE, j, tid);
-                }
-            }
+            types.push_back(kv.first);
         }
 
-        for (auto &kv : builtinsProps) {
-            TypeID tid = kv.first;
-            auto &vec = kv.second;
-            for (size_t j = 0; j < vec.size(); ++j) {
-                if (vec[j].isCallable) {
-                    cands.emplace_back(BUILTIN_MODULE_ID, j, tid);
-                }
-            }
+        for (const auto &kv : pd.mutableIndex) {
+            // only interested with those types can be interacted with
+            if (kv.second.empty() || (std::find(types.begin(), types.end(),
+                                                kv.first) != types.end()))
+                continue;
+
+            types.push_back(kv.first);
         }
 
-        for (const auto &mid : ast.importedModules) {
-            for (auto &kv : modulesProps[mid]) {
-                TypeID tid = kv.first;
-                auto &vec = kv.second;
-                for (size_t j = 0; j < vec.size(); ++j) {
-                    if (vec[j].isCallable) {
-                        cands.emplace_back(mid, j, tid);
-                    }
-                }
-            }
+        for (const auto &kv : pd.funcIndex) {
+
+            // only interested with those types can be interacted with
+            if (kv.second.empty() || (std::find(types.begin(), types.end(),
+                                                kv.first) != types.end()))
+                continue;
+
+            types.push_back(kv.first);
         }
 
-        funcList_[i] = std::move(cands);
-        funcCnts_[i] = funcList_[i].size();
-        if (funcCnts_[i] > 0) {
-            funcDist_[i] =
-                std::uniform_int_distribution<size_t>(0, funcCnts_[i] - 1);
+        typeDist_[i] = makeIndexDist(types.size());
+        for (auto t : types) {
+            pd.constDist[t] = makeIndexDist(pd.constIndex[t].size());
+            pd.mutableDist[t] = makeIndexDist(pd.mutableIndex[t].size());
+            pd.funcDist[t] = makeIndexDist(pd.funcIndex[t].size());
         }
     }
 }
@@ -169,50 +118,38 @@ TypeID BuiltinContext::pickRandomType(ScopeID scopeID) {
 }
 
 PropKey BuiltinContext::pickRandomVar(ScopeID scopeID, TypeID type,
-                                      bool isConst) {
-    const auto &mp = (isConst ? constIndex_ : mutableIndex_).at(scopeID);
-    // if (type == 0) {
-    //     if (mp.empty())
-    //         return PropKey::emptyKey();
-    //     type = pickRandomType(scopeID);
-    //     if (type == 0)
-    //         return PropKey::emptyKey();
-    // }
+                                      ObjectKind valueKind,
+                                      const std::vector<ASTScope> &scopes) {
+    auto &pd = scopeProviders[scopeID];
+    auto &md = pd.selectDist(valueKind);
+    if (!md.contains(type))
+        type = 0;
+    auto &mp = md[type];
 
-    auto mit = mp.find(type);
-    if (mit == mp.end() || mit->second.empty())
-        return PropKey::emptyKey();
-    auto &scopeList = varDist_.at(scopeID);
-    auto typeList = scopeList.find(type);
-    if (typeList == scopeList.end())
-        return PropKey::emptyKey();
+    if (scopeID != 0 &&
+        (pd.useParent.at(static_cast<int>(valueKind))(rng) || mp.max() < 1)) {
+        return pickRandomVar(scopes[scopeID].parent, type, valueKind, scopes);
+    }
 
-    return mit->second.at(typeList->second.at(isConst)(rng));
+    if (mp.max() < 1)
+        return PropKey::emptyKey();
+    else
+        return pd.selectIndex(valueKind).at(type).at(mp(rng));
 }
 
-PropKey BuiltinContext::pickRandomVar(ScopeID scopeID, bool isConst) {
-    return pickRandomVar(scopeID, pickRandomType(scopeID), isConst);
+PropKey BuiltinContext::pickRandomVar(ScopeID scopeID, ObjectKind valueKind,
+                                      const std::vector<ASTScope> &scopes) {
+    return pickRandomVar(scopeID, pickRandomType(scopeID), valueKind, scopes);
 }
 
 PropKey BuiltinContext::pickRandomVar(ScopeID scopeID,
                                       const std::vector<TypeID> &types,
-                                      bool isConst) {
+                                      ObjectKind valueKind,
+                                      const std::vector<ASTScope> &scopes) {
     if (types.empty())
         return PropKey::emptyKey();
     TypeID t = types[rng() % types.size()];
-    return pickRandomVar(scopeID, t, isConst);
-}
-
-/*------------------ pickRandomMethod ------------------*/
-PropKey BuiltinContext::pickRandomFunc(ScopeID scopeID) {
-    if (scopeID >= funcList_.size())
-        return PropKey::emptyKey();
-    const auto &lst = funcList_.at(scopeID);
-    if (lst.empty())
-        return PropKey::emptyKey();
-
-    size_t pick = funcDist_.at(scopeID)(rng);
-    return lst.at(pick);
+    return pickRandomVar(scopeID, t, valueKind, scopes);
 }
 
 PropKey BuiltinContext::pickRandomMethod(TypeID tid) {
@@ -230,4 +167,8 @@ PropKey BuiltinContext::pickRandomMethod(TypeID tid) {
     return {NO_MODULE, idx, tid};
 }
 
-bool FuzzingAST::BuiltinContext::pickConst() { return pickConstDist(rng); }
+ObjectKind FuzzingAST::BuiltinContext::pickValueKind() {
+    return static_cast<ObjectKind>(pickValueKindDist(rng));
+}
+
+bool FuzzingAST::BuiltinContext::respectType() { return respectType_dist(rng); }

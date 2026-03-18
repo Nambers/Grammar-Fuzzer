@@ -10,9 +10,8 @@ using namespace FuzzingAST;
 void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
     std::ifstream in("./builtins.json");
     if (!in) {
-        std::cerr
-            << "Failed to open builtins.json, run builtins_gen.lua first."
-            << std::endl;
+        std::cerr << "Failed to open builtins.json, run builtins_gen.lua first."
+                  << std::endl;
         raise(SIGINT);
     }
     nlohmann::json j;
@@ -47,8 +46,7 @@ void FuzzingAST::loadBuiltinsFuncs(BuiltinContext &ctx) {
 // Lua-specific primitive type resolution
 void FuzzingAST::initPrimitiveTypes(BuiltinContext &ctx) {
     auto find = [&](const std::string &name) -> TypeID {
-        auto it =
-            std::find(ctx.types.begin(), ctx.types.end(), name);
+        auto it = std::find(ctx.types.begin(), ctx.types.end(), name);
         return (it != ctx.types.end())
                    ? static_cast<TypeID>(it - ctx.types.begin())
                    : -1;
@@ -58,7 +56,7 @@ void FuzzingAST::initPrimitiveTypes(BuiltinContext &ctx) {
     ctx.intID = find("number");
     ctx.floatID = find("number"); // Lua has a single number type
     ctx.boolID = find("boolean");
-    ctx.listID = find("table");       // Lua tables serve as lists
-    ctx.dictID = find("table");       // Lua tables serve as dicts
-    ctx.bytearrayID = -1;             // Lua has no bytearray
+    ctx.listID = find("table"); // Lua tables serve as lists
+    ctx.dictID = find("table"); // Lua tables serve as dicts
+    ctx.bytearrayID = 0;        // Lua has no bytearray
 }

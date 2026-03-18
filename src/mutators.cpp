@@ -1,6 +1,6 @@
-#include "mutators.hpp"
 #include "driver.hpp"
 #include "log.hpp"
+#include "mutators.hpp"
 #include "serialization.hpp"
 
 using namespace FuzzingAST;
@@ -39,7 +39,7 @@ int FuzzingAST::mutate_declaration(ASTData &astPtr, BuiltinContext &ctx) {
         }
     }
     astPtr.ast = std::move(ast);
-    ctx.update(astPtr.ast);
+    ctx.updateVars(astPtr.ast);
     return 0;
 }
 
@@ -101,4 +101,36 @@ bool FuzzingAST::bumpIdentifier(std::string &id) {
         return true;
     }
     return false;
+}
+
+std::string FuzzingAST::buildFunctionCallG(
+    const std::vector<FuzzingAST::TypeID> &paramTypes, ScopeID sid,
+    const AST &ast, BuiltinContext &ctx,
+    std::unordered_set<std::string> &globalVars) {
+    if (paramTypes.empty())
+        return "()";
+
+    auto callExpr = std::string("(");
+    for (size_t i = 0; i < paramTypes.size(); ++i) {
+        if (i > 0)
+            callExpr += ", ";
+        const auto valueType = ctx.respectType() ? paramTypes[i] : 0;
+        const auto varNameKey =
+            ctx.pickRandomVar(sid, valueType, ctx.pickValueKind(), ast.scopes);
+        if (varNameKey.empty()) {
+            return {};
+        }
+        const auto &varProp = unfoldKey(varNameKey, ast, ctx);
+        if (varProp.isCallable && varProp.funcSig.returnType == paramTypes[i]) {
+            auto ret = buildFunctionCallG(varProp.funcSig.paramTypes, sid, ast,
+                                          ctx, globalVars);
+            if (ret.empty())
+                return {};
+            callExpr += varProp.name + ret;
+        } else {
+            callExpr += varProp.name;
+            insertGlobalVar(varProp, globalVars);
+        }
+    }
+    return callExpr + ")";
 }

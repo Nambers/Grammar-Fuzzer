@@ -1,8 +1,8 @@
-#include "target.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "dumper.hpp"
 #include "log.hpp"
+#include "target.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
@@ -137,24 +137,27 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
     data.ast.declarations[7] =
         ASTNode{ASTNodeKind::DeclareVar, {{"tbl_a"}, {"{3, 1, 4, 1, 5, 9}"}}};
     data.ast.declarations[8] =
-        ASTNode{ASTNodeKind::DeclareVar, {{"tbl_b"}, {"{}"}}};  
-    data.ast.declarations[9] =
-        ASTNode{ASTNodeKind::DeclareVar, {{"tbl_c"}, {"{[1]=10, [2]=20, [3]=30}"}}};
+        ASTNode{ASTNodeKind::DeclareVar, {{"tbl_b"}, {"{}"}}};
+    data.ast.declarations[9] = ASTNode{
+        ASTNodeKind::DeclareVar, {{"tbl_c"}, {"{[1]=10, [2]=20, [3]=30}"}}};
     data.ast.declarations[10] =
-        ASTNode{ASTNodeKind::DeclareVar, {{"tbl_d"}, {"{a=1, b=2, c=3}"}}};  // dict-like table
+        ASTNode{ASTNodeKind::DeclareVar,
+                {{"tbl_d"}, {"{a=1, b=2, c=3}"}}}; // dict-like table
 
-    data.ast.classProps[-1].resize(NUM_SEED);
-    data.ast.classProps[-1][0] = PropInfo{ctx.strID,   0, "str_a",  false};
-    data.ast.classProps[-1][1] = PropInfo{ctx.strID,   0, "str_b",  false};
-    data.ast.classProps[-1][2] = PropInfo{ctx.intID,   0, "num_a",  false};
-    data.ast.classProps[-1][3] = PropInfo{ctx.intID,   0, "num_b",  false};
-    data.ast.classProps[-1][4] = PropInfo{ctx.floatID, 0, "num_c",  false};
-    data.ast.classProps[-1][5] = PropInfo{ctx.boolID,  0, "bool_a", false};
-    data.ast.classProps[-1][6] = PropInfo{ctx.boolID,  0, "bool_b", false};
-    data.ast.classProps[-1][7] = PropInfo{tableType,   0, "tbl_a",  false};
-    data.ast.classProps[-1][8] = PropInfo{tableType,   0, "tbl_b",  false};
-    data.ast.classProps[-1][9] = PropInfo{tableType,   0, "tbl_c",  false};
-    data.ast.classProps[-1][10] = PropInfo{tableType,  0, "tbl_d",  false};
+    data.ast.classProps[NOT_UNDER_CLASS].resize(NUM_SEED);
+    data.ast.classProps[NOT_UNDER_CLASS][0] = PropInfo{ctx.strID, 0, "str_a"};
+    data.ast.classProps[NOT_UNDER_CLASS][1] = PropInfo{ctx.strID, 0, "str_b"};
+    data.ast.classProps[NOT_UNDER_CLASS][2] = PropInfo{ctx.intID, 0, "num_a"};
+    data.ast.classProps[NOT_UNDER_CLASS][3] = PropInfo{ctx.intID, 0, "num_b"};
+    data.ast.classProps[NOT_UNDER_CLASS][4] = PropInfo{ctx.floatID, 0, "num_c"};
+    data.ast.classProps[NOT_UNDER_CLASS][5] = PropInfo{ctx.boolID, 0, "bool_a"};
+    data.ast.classProps[NOT_UNDER_CLASS][6] = PropInfo{ctx.boolID, 0, "bool_b"};
+    data.ast.classProps[NOT_UNDER_CLASS][7] = PropInfo{tableType, 0, "tbl_a"};
+    data.ast.classProps[NOT_UNDER_CLASS][8] = PropInfo{tableType, 0, "tbl_b"};
+    data.ast.classProps[NOT_UNDER_CLASS][9] = PropInfo{tableType, 0, "tbl_c"};
+    data.ast.classProps[NOT_UNDER_CLASS][10] = PropInfo{tableType, 0, "tbl_d"};
+
+    data.ast.variables.resize(NUM_SEED);
 
     data.ast.variables.resize(NUM_SEED);
     for (int i = 0; i < NUM_SEED; ++i) {
@@ -191,9 +194,10 @@ static void errorCallback(const std::string &errMsg, AST &ast,
                 std::string methodName = funcName.substr(dot + 1);
                 TypeID tid = resolveType(typeName, ctx, ast, 0);
                 if (tid > 0) {
-                    auto &methods = tid < static_cast<TypeID>(ctx.builtinTypesCnt)
-                                        ? ctx.builtinsProps[tid]
-                                        : ast.classProps[tid];
+                    auto &methods =
+                        tid < static_cast<TypeID>(ctx.builtinTypesCnt)
+                            ? ctx.builtinsProps[tid]
+                            : ast.classProps[tid];
                     for (auto &pi : methods) {
                         if (pi.name == methodName && pi.isCallable &&
                             argNum - 1 < pi.funcSig.paramTypes.size()) {
@@ -223,8 +227,10 @@ static void errorCallback(const std::string &errMsg, AST &ast,
         if (std::regex_search(errMsg, m, reArith)) {
             TypeID badTid = resolveType(m[1], ctx, ast, 0);
             if (badTid > 0) {
-                // remove this type from arithmetic ops (ops 0-6: + - * / % ** //)
-                for (int opIdx = 0; opIdx < 7 && opIdx < (int)ctx.ops.size(); ++opIdx) {
+                // remove this type from arithmetic ops (ops 0-6: + - * / % **
+                // //)
+                for (int opIdx = 0; opIdx < 7 && opIdx < (int)ctx.ops.size();
+                     ++opIdx) {
                     auto &row = ctx.ops[opIdx];
                     if (badTid < (TypeID)row.size()) {
                         row[badTid].clear();
@@ -243,14 +249,14 @@ static void errorCallback(const std::string &errMsg, AST &ast,
 
     /* --- "attempt to compare two <type> values" ------------------- */
     {
-        static const std::regex reCmp(
-            R"(attempt to compare two (\w+) values)");
+        static const std::regex reCmp(R"(attempt to compare two (\w+) values)");
         std::smatch m;
         if (std::regex_search(errMsg, m, reCmp)) {
             TypeID badTid = resolveType(m[1], ctx, ast, 0);
             if (badTid > 0) {
                 // remove from comparison ops (ops 9-12: < > <= >=)
-                for (int opIdx = 9; opIdx <= 12 && opIdx < (int)ctx.ops.size(); ++opIdx) {
+                for (int opIdx = 9; opIdx <= 12 && opIdx < (int)ctx.ops.size();
+                     ++opIdx) {
                     auto &row = ctx.ops[opIdx];
                     if (badTid < (TypeID)row.size()) {
                         row[badTid].clear();
@@ -268,8 +274,7 @@ static void errorCallback(const std::string &errMsg, AST &ast,
 
     /* --- "attempt to call a <type> value" ------------------------- */
     {
-        static const std::regex reCall(
-            R"(attempt to call a (\w+) value)");
+        static const std::regex reCall(R"(attempt to call a (\w+) value)");
         std::smatch m;
         if (std::regex_search(errMsg, m, reCall)) {
             // Extract the called name from the node if available
@@ -304,8 +309,7 @@ static void errorCallback(const std::string &errMsg, AST &ast,
 
     /* --- "attempt to index a <type> value" ------------------------ */
     {
-        static const std::regex reIndex(
-            R"(attempt to index a (\w+) value)");
+        static const std::regex reIndex(R"(attempt to index a (\w+) value)");
         std::smatch m;
         if (std::regex_search(errMsg, m, reIndex)) {
             // The type shouldn't have properties — remove all props
@@ -341,7 +345,8 @@ static void errorCallback(const std::string &errMsg, AST &ast,
             };
             if (!shrink(ctx.builtinsProps[-1])) {
                 for (auto &[tid, props] : ctx.builtinsProps)
-                    if (shrink(props)) break;
+                    if (shrink(props))
+                        break;
             }
             return;
         }
@@ -467,7 +472,7 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
     lua_pop(L, 1); // pop global table
 
     lua_close(L);
-    ctx.update(ast);
+    ctx.updateVars(ast);
     return 0;
 }
 
@@ -486,8 +491,7 @@ void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
     // Only query globals for variables we actually track — avoid iterating
     // the entire Lua global table (string, math, io, os, etc.).
     for (VarID varID : ast.ast.scopes[0].variables) {
-        auto &varInfo =
-            unfoldKey(ast.ast.variables.at(varID), ast.ast, ctx);
+        auto &varInfo = unfoldKey(ast.ast.variables.at(varID), ast.ast, ctx);
         const std::string &name = varInfo.name;
 
         lua_getglobal(L, name.c_str());
@@ -499,11 +503,20 @@ void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
         const char *typeName = nullptr;
         int lt = lua_type(L, -1);
         switch (lt) {
-        case LUA_TSTRING:  typeName = "string";  break;
-        case LUA_TNUMBER:  typeName = "number";  break;
-        case LUA_TBOOLEAN: typeName = "boolean"; break;
-        case LUA_TTABLE:   typeName = "table";   break;
-        default: break;
+        case LUA_TSTRING:
+            typeName = "string";
+            break;
+        case LUA_TNUMBER:
+            typeName = "number";
+            break;
+        case LUA_TBOOLEAN:
+            typeName = "boolean";
+            break;
+        case LUA_TTABLE:
+            typeName = "table";
+            break;
+        default:
+            break;
         }
 
         if (typeName) {

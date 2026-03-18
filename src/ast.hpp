@@ -4,6 +4,7 @@
 #include <array>
 #include <optional>
 #include <random>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -20,8 +21,15 @@ using VarID = int;
 constexpr ModuleID NO_MODULE = -1;
 constexpr ModuleID BUILTIN_MODULE_ID = 0;
 
+constexpr ScopeID EMPTY_SCOPE = -1;
+
+// not delcare under a class scope
+constexpr TypeID NOT_UNDER_CLASS = -1;
+constexpr TypeID NO_RETURN = -1;
+constexpr TypeID OBJECT_TYPE = 0;
+
 constexpr size_t SCOPE_MAX_TYPE = 200;
-constexpr size_t MAX_SCOPE_CNT = 50;
+constexpr size_t MAX_SCOPE_CNT = 20;
 constexpr std::array BINARY_OPS{"+",  "-",  "*",  "/", "%",  "**",
                                 "//", "==", "!=", "<", ">",  "<=",
                                 ">=", "&",  "|",  "^", "<<", ">>"};
@@ -40,8 +48,8 @@ enum class ASTNodeKind {
     BinaryOp,     // x + y
     UnaryOp,      // -x
     NewInstance,  // x = Class()
-    SetItem,     // x[y] = z
-    GetItem,     // z = x[y]
+    SetItem,      // x[y] = z
+    GetItem,      // z = x[y]
     // ---
     GlobalRef,
 };
@@ -55,6 +63,9 @@ class FunctionSignature {
     std::vector<TypeID> paramTypes;
     TypeID selfType = -1; // for methods, the type of the class
     TypeID returnType = -1;
+
+  public:
+    bool operator==(const FunctionSignature &other) const = default;
 };
 
 class PropInfo {
@@ -66,31 +77,22 @@ class PropInfo {
     bool isCallable = false;
     bool isArg = false;
     FunctionSignature funcSig = {};
-    bool operator==(const PropInfo &other) const {
-        return type == other.type && scope == other.scope &&
-               name == other.name && isConst == other.isConst &&
-               isCallable == other.isCallable && isArg == other.isArg &&
-               funcSig.paramTypes == other.funcSig.paramTypes &&
-               funcSig.selfType == other.funcSig.selfType &&
-               funcSig.returnType == other.funcSig.returnType;
-    }
+    bool operator==(const PropInfo &other) const = default;
     struct Hash {
+        template <typename T>
+        static inline void hash_combine(size_t &seed, T value) {
+            seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        }
         std::size_t operator()(const FuzzingAST::PropInfo &key) const {
-            std::hash<std::string> stringHasher;
-            std::hash<TypeID> typeHasher;
-            std::hash<ScopeID> scopeHasher;
-
             size_t seed = 0;
-            seed ^=
-                typeHasher(key.type) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            seed ^=
-                scopeHasher(key.scope) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            seed ^=
-                stringHasher(key.name) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            seed ^= std::hash<bool>()(key.isConst) + 0x9e3779b9 + (seed << 6) +
-                    (seed >> 2);
-            seed ^= std::hash<bool>()(key.isCallable) + 0x9e3779b9 +
-                    (seed << 6) + (seed >> 2);
+
+            hash_combine(seed, std::hash<TypeID>{}(key.type));
+            hash_combine(seed, std::hash<ScopeID>{}(key.scope));
+            hash_combine(seed, std::hash<std::string>{}(key.name));
+            hash_combine(seed, std::hash<bool>{}(key.isConst));
+            hash_combine(seed, std::hash<bool>{}(key.isCallable));
+            hash_combine(seed, std::hash<bool>{}(key.isArg));
+            // Optionally, hash funcSig if needed for uniqueness
             return seed;
         }
     };
@@ -98,6 +100,7 @@ class PropInfo {
 
 class ASTData; // forward declaration
 class AST;
+class ASTScope;
 
 // avoid store ptr
 class PropKey {
@@ -108,15 +111,71 @@ class PropKey {
     size_t idx = SIZE_MAX;
     TypeID parentType = -1; // builtinProps[type]
 
-    inline bool empty() const { return idx == SIZE_MAX && parentType == -1; }
-    inline bool operator==(const PropKey &other) const {
-        return moduleID == other.moduleID && idx == other.idx &&
-               parentType == other.parentType;
+    inline bool empty() const {
+        return idx == SIZE_MAX && parentType == NOT_UNDER_CLASS;
     }
+    inline bool operator==(const PropKey &other) const = default;
     // empty static instance
     inline static const PropKey &emptyKey() {
-        static const PropKey emptyKeyInstance{false, SIZE_MAX, -1};
+        static const PropKey emptyKeyInstance{false, SIZE_MAX, NOT_UNDER_CLASS};
         return emptyKeyInstance;
+    }
+};
+
+enum class ObjectKind {
+    mutable_var = 0,
+    constant_var = 1,
+    function = 2,
+};
+
+class ScopeProvider {
+  public:
+    // TypeID is dense enough (<=75), use vector indexed by TypeID directly
+    // index: [typeID] -> vector of PropKey
+    std::unordered_map<TypeID, std::vector<PropKey>> constIndex;   // [TypeID]
+    std::unordered_map<TypeID, std::vector<PropKey>> mutableIndex; // [TypeID]
+    std::unordered_map<TypeID, std::vector<PropKey>> funcIndex;    // [TypeID]
+
+    // dist per TypeID, only valid when corresponding index is non-empty
+    std::unordered_map<TypeID, std::uniform_int_distribution<size_t>> constDist;
+    std::unordered_map<TypeID, std::uniform_int_distribution<size_t>>
+        mutableDist;
+    std::unordered_map<TypeID, std::uniform_int_distribution<size_t>> funcDist;
+
+    std::array<std::bernoulli_distribution, 3> useParent;
+
+  public:
+    ScopeProvider() = default;
+
+    inline std::unordered_map<TypeID, std::vector<PropKey>> &
+    selectIndex(const PropInfo &pi) {
+        return pi.isCallable ? funcIndex
+                             : (pi.isConst ? constIndex : mutableIndex);
+    }
+
+    inline const std::unordered_map<TypeID, std::vector<PropKey>> &
+    selectIndex(ObjectKind kind) const {
+        switch (kind) {
+        case ObjectKind::constant_var:
+            return constIndex;
+        case ObjectKind::mutable_var:
+            return mutableIndex;
+        case ObjectKind::function:
+            return funcIndex;
+        }
+    }
+
+    inline std::unordered_map<FuzzingAST::TypeID,
+                              std::uniform_int_distribution<size_t>> &
+    selectDist(ObjectKind kind) {
+        switch (kind) {
+        case ObjectKind::constant_var:
+            return constDist;
+        case ObjectKind::mutable_var:
+            return mutableDist;
+        case ObjectKind::function:
+            return funcDist;
+        }
     }
 };
 
@@ -137,49 +196,43 @@ class BuiltinContext {
     TypeID listID = -1;
     TypeID bytearrayID = -1;
     TypeID dictID = -1;
-    std::discrete_distribution<bool> pickConstDist{
-        9, 1}; // 9:1 non-const and const
-               // --- variable provider ---
+    std::discrete_distribution<int> pickValueKindDist{
+        9, 1, 6}; // 9:1:6 non-const, const and function result
+                  // --- variable provider ---
   public:
     // Build index for all scopes, merging parent scope and initializing
     // distributions
     void updateVars(const AST &ast);
-    void updateFuncs(const AST &ast);
-    inline void update(const AST &ast) {
-        updateVars(ast);
-        updateFuncs(ast);
-    }
 
     // Pick a random type available in given scope (fallback to 0)
     TypeID pickRandomType(ScopeID scopeID);
 
-    bool pickConst();
+    ObjectKind pickValueKind();
+    bool respectType();
 
     // Pick a random variable name by type, with fallback to object type (0)
-    PropKey pickRandomVar(ScopeID scopeID, TypeID type, bool isConst);
+    PropKey pickRandomVar(ScopeID scopeID, TypeID type, ObjectKind valueKind,
+                          const std::vector<ASTScope> &scopes);
 
     // Pick a random variable of any type in given scope (including inherited
     // and object)
-    PropKey pickRandomVar(ScopeID scopeID, bool isConst);
+    PropKey pickRandomVar(ScopeID scopeID, ObjectKind valueKind,
+                          const std::vector<ASTScope> &scopes);
     PropKey pickRandomVar(ScopeID scopeID, const std::vector<TypeID> &types,
-                          bool isConst);
+                          ObjectKind valueKind,
+                          const std::vector<ASTScope> &scopes);
 
-    PropKey pickRandomFunc(ScopeID scopeID);
     PropKey pickRandomMethod(TypeID tid);
 
   private:
-    std::vector<std::unordered_map<TypeID, std::vector<PropKey>>> constIndex_;
-    std::vector<std::unordered_map<TypeID, std::vector<PropKey>>> mutableIndex_;
-
     std::vector<std::vector<TypeID>> typeList_;
     std::vector<std::uniform_int_distribution<size_t>> typeDist_;
-    std::vector<std::unordered_map<
-        TypeID, std::array<std::uniform_int_distribution<size_t>, 2>>>
-        varDist_;
 
-    std::vector<std::vector<PropKey>> funcList_;
-    std::vector<std::uniform_int_distribution<size_t>> funcDist_;
-    std::vector<size_t> funcCnts_;
+    std::vector<ScopeProvider> scopeProviders;
+
+    std::bernoulli_distribution respectType_dist{
+        0.8}; // 80% respect type, 20% not respect type
+
     std::unordered_map<TypeID, std::uniform_int_distribution<size_t>>
         methodDist_;
 };
@@ -187,7 +240,12 @@ class BuiltinContext {
 class ASTNodeValue {
   public:
     std::variant<std::string, int64_t, bool, double> val;
+
+  public:
+    bool operator==(const ASTNodeValue &other) const = default;
 };
+
+inline const ASTNodeValue SENTINEL_NODE{-1};
 
 class ASTNode {
   public:
@@ -201,6 +259,7 @@ class ASTNode {
     function:
      */
     std::vector<ASTNodeValue> fields = {};
+    // if it's function, it should have scope linked to it
     ScopeID scope = -1;
 };
 
@@ -230,6 +289,7 @@ class AST {
     // we don't do normal function in fuzzing,
     // bc it is very unlikely to trigger bugs
     // std::vector<PropInfo> functions;
+    // TypeID -> -1 means not under class
     std::unordered_map<TypeID, std::vector<PropInfo>> classProps;
 
     // generate main block
@@ -282,7 +342,7 @@ inline void insertGlobalVar(const std::string &varName, bool isConst,
 
 inline void insertGlobalVar(const PropInfo &varProp,
                             std::unordered_set<std::string> &globalVars) {
-    if (!varProp.isConst && !varProp.isArg)
+    if (!varProp.isCallable && !varProp.isConst && !varProp.isArg)
         globalVars.insert(varProp.name);
 }
 }; // namespace FuzzingAST

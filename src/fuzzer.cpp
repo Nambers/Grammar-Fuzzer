@@ -166,7 +166,7 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
             history.push_back(data);
         } else if (ret == -1) {
             // update index to match with fixed result
-            scheduler.ctx.update(ast.ast);
+            scheduler.ctx.updateVars(ast.ast);
         } else if (ret == -2) {
             // timeout
             execCtx = getInitExecutionContext();
@@ -205,7 +205,7 @@ void FuzzingAST::fuzzerDriver() {
         }
     }
     corpusSize = scheduler.corpus.size();
-    scheduler.ctx.update(scheduler.corpus[scheduler.idx].ast);
+    scheduler.ctx.updateVars(scheduler.corpus[scheduler.idx].ast);
     newEdgeCnt = 0; // reset edge count
     cacheCorpus.reserve(MAX_CACHE_SIZE);
     TUI::initTUI();
@@ -221,7 +221,7 @@ void FuzzingAST::fuzzerDriver() {
             // continue generation on current
             const auto cacheNewEdgeCnt = newEdgeCnt;
             ASTData newData = scheduler.corpus.at(scheduler.idx);
-            scheduler.ctx.update(newData.ast);
+            scheduler.ctx.updateVars(newData.ast);
             auto lines = testInputStream(newData, scheduler);
             if (cacheNewEdgeCnt < newEdgeCnt) {
                 // got new edge

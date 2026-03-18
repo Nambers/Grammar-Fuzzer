@@ -123,7 +123,7 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
         size_t idx = 1; // collect bases
         for (; idx < node.fields.size(); ++idx) {
             if (std::holds_alternative<int64_t>(node.fields[idx].val) &&
-                std::get<int64_t>(node.fields[idx].val) == -1) {
+                node.fields[idx] == SENTINEL_NODE) {
                 ++idx; // skip sentinel
                 break;
             }
@@ -178,7 +178,7 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
 void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
                                const AST &ast, const BuiltinContext &ctx,
                                int indentLevel) {
-    if (sid == -1)
+    if (sid == EMPTY_SCOPE)
         return;
     out << std::string(indentLevel * 4, ' ') << "# scope " << sid << '\n';
     const ASTScope &scope = ast.scopes[sid];

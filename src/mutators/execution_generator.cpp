@@ -30,6 +30,54 @@ static_assert(PICK_EXEC_WEIGHT.size() ==
 static std::discrete_distribution<int> pickExec(PICK_EXEC_WEIGHT.begin(),
                                                 PICK_EXEC_WEIGHT.end());
 
+static TypeID pickMaybeObjectType(BuiltinContext &ctx, TypeID expectedType) {
+    return ctx.respectType() ? expectedType : 0;
+}
+
+static PropKey pickTypedValueKey(BuiltinContext &ctx, ScopeID scopeID,
+                                 TypeID expectedType,
+                                 const std::vector<ASTScope> &scopes) {
+    return ctx.pickRandomVar(scopeID, pickMaybeObjectType(ctx, expectedType),
+                             ctx.pickValueKind(), scopes);
+}
+
+static std::optional<std::string>
+buildValueExprFromKey(const PropKey &valueKey, ScopeID scopeID, const AST &ast,
+                      BuiltinContext &ctx,
+                      std::unordered_set<std::string> &globalVars,
+                      ObjectKind parentKind = ObjectKind::mutable_var) {
+    if (valueKey.empty())
+        return std::nullopt;
+
+    const auto &value = unfoldKey(valueKey, ast, ctx);
+    std::string valueExpr = value.name;
+
+    if (valueKey.parentType != NOT_UNDER_CLASS) {
+        const auto parentKey =
+            ctx.pickRandomVar(scopeID, valueKey.parentType, parentKind,
+                              ast.scopes); // parent can't be callable
+        if (parentKey.empty())
+            return std::nullopt;
+        const auto &parent = unfoldKey(parentKey, ast, ctx);
+        valueExpr = parent.name + '.' + valueExpr;
+        insertGlobalVar(parent, globalVars);
+    }
+
+    if (value.isCallable) {
+        auto callExpr = buildFunctionCallG(value.funcSig.paramTypes, scopeID,
+                                           ast, ctx, globalVars);
+        if (callExpr.empty())
+            return std::nullopt;
+        valueExpr += callExpr;
+    } else if (!value.isConst && valueKey.parentType == NOT_UNDER_CLASS) {
+        // when the value is a mutable variable, and isn't under object, add to
+        // the globalVars
+        insertGlobalVar(value, globalVars);
+    }
+
+    return valueExpr;
+}
+
 int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                               std::unordered_set<std::string> &globalVars,
                               ScopeID scopeID, const ASTScope &scope) {
@@ -42,6 +90,7 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
         ASTNodeKind pick = static_cast<ASTNodeKind>(
             static_cast<int>(EXEC_NODE_START) + pickExec(rng));
         curr.kind = pick;
+        curr.scope = scopeID;
         curr.fields.clear();
 
         switch (pick) {
@@ -51,22 +100,31 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
 
         case ASTNodeKind::SetProp: {
             TypeID t = ctx.pickRandomType(scopeID);
-            const auto v1Key = ctx.pickRandomVar(scopeID, t, false);
+            const auto v1Key = ctx.pickRandomVar(
+                scopeID, t, ObjectKind::mutable_var, ast.ast.scopes);
             if (v1Key.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto v2Key = ctx.pickRandomVar(scopeID, t, ctx.pickConst());
+            const auto v2Key =
+                pickTypedValueKey(ctx, scopeID, t, ast.ast.scopes);
             if (v1Key == v2Key || v2Key.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
             const auto &v1 = unfoldKey(v1Key, ast.ast, ctx);
             auto v1Name = v1.name;
-            auto v2Name = unfoldKey(v2Key, ast.ast, ctx).name;
-            if (v1Key.parentType != -1) {
+            const auto v2Name =
+                buildValueExprFromKey(v2Key, scopeID, ast.ast, ctx, globalVars);
+            if (!v2Name) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            if (v1Key.parentType != NOT_UNDER_CLASS) {
+                // parent can't be function call, and constant
                 const auto v1pKey =
-                    ctx.pickRandomVar(scopeID, v1Key.parentType, false);
+                    ctx.pickRandomVar(scopeID, v1Key.parentType,
+                                      ObjectKind::mutable_var, ast.ast.scopes);
                 if (v1pKey.empty()) {
                     state = MutationState::STATE_REROLL;
                     break;
@@ -78,17 +136,8 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             } else
                 // globalVars.insert(v1);
                 insertGlobalVar(v1, globalVars);
-            if (v2Key.parentType != -1) {
-                const auto v2pKey = ctx.pickRandomVar(scopeID, v2Key.parentType,
-                                                      ctx.pickConst());
-                if (v2pKey.empty()) {
-                    state = MutationState::STATE_REROLL;
-                    break;
-                }
-                v2Name = unfoldKey(v2pKey, ast.ast, ctx).name + '.' + v2Name;
-            }
 
-            curr.fields = {{v1Name}, {v2Name}};
+            curr.fields = {{v1Name}, {*v2Name}};
 
             break;
         }
@@ -115,32 +164,19 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             curr.fields.emplace_back(typeName);
             if (sig) {
                 for (auto i = 0; i < sig->paramTypes.size(); ++i) {
-                    const auto varKey =
-                        ctx.pickRandomVar(scopeID, sig->paramTypes[i], false);
+                    const auto varKey = pickTypedValueKey(
+                        ctx, scopeID, sig->paramTypes[i], ast.ast.scopes);
                     if (varKey.empty()) {
                         state = MutationState::STATE_REROLL;
                         break;
                     }
-                    const auto &var = unfoldKey(varKey, ast.ast, ctx);
-                    if (varKey.parentType != -1) {
-                        // if it's a property, get parent variable
-                        const auto parentVarKey = ctx.pickRandomVar(
-                            scopeID, varKey.parentType, false);
-                        if (parentVarKey.empty()) {
-                            state = MutationState::STATE_REROLL;
-                            break;
-                        }
-                        const auto &parentVar =
-                            unfoldKey(parentVarKey, ast.ast, ctx);
-                        curr.fields.emplace_back(parentVar.name + '.' +
-                                                 var.name);
-                        // globalVars.insert(parentVar.name);
-                        insertGlobalVar(parentVar, globalVars);
-                    } else {
-                        curr.fields.emplace_back(var.name);
-                        // globalVars.insert(var.name);
-                        insertGlobalVar(var, globalVars);
+                    const auto valueExpr = buildValueExprFromKey(
+                        varKey, scopeID, ast.ast, ctx, globalVars);
+                    if (!valueExpr) {
+                        state = MutationState::STATE_REROLL;
+                        break;
                     }
+                    curr.fields.emplace_back(*valueExpr);
                 }
             }
             globalVars.insert(ast.ast.nameCnt);
@@ -150,9 +186,10 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 scope_.variables.push_back(
                     static_cast<VarID>(ast.ast.variables.size()));
                 ast.ast.variables.emplace_back(
-                    NO_MODULE, ast.ast.classProps[-1].size(), -1);
-                ast.ast.classProps[-1].emplace_back(tid, scopeID,
-                                                    ast.ast.nameCnt, false);
+                    NO_MODULE, ast.ast.classProps[NOT_UNDER_CLASS].size(),
+                    NOT_UNDER_CLASS);
+                ast.ast.classProps[NOT_UNDER_CLASS].emplace_back(
+                    tid, scopeID, ast.ast.nameCnt, false);
             }
             bumpIdentifier(ast.ast.nameCnt);
             break;
@@ -160,7 +197,8 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
 
         case ASTNodeKind::Call: {
             // pick function name
-            const auto funcKey = ctx.pickRandomFunc(scopeID);
+            const auto funcKey = ctx.pickRandomVar(
+                scopeID, ObjectKind::function, ast.ast.scopes);
             if (funcKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
@@ -171,7 +209,7 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             curr.fields.emplace_back(""); // placeholder for return arg
             curr.fields.emplace_back(fname);
             // return value — create a fresh variable so the pool grows
-            if (sig.returnType != -1) {
+            if (sig.returnType != NO_RETURN) {
                 const auto newVarName = ast.ast.nameCnt;
                 bumpIdentifier(ast.ast.nameCnt);
                 curr.fields[0] = {newVarName};
@@ -181,20 +219,23 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 scope_.variables.push_back(
                     static_cast<VarID>(ast.ast.variables.size()));
                 ast.ast.variables.emplace_back(
-                    NO_MODULE, ast.ast.classProps[-1].size(), -1);
-                ast.ast.classProps[-1].emplace_back(sig.returnType, scopeID,
-                                                    newVarName, false);
+                    NO_MODULE, ast.ast.classProps[NOT_UNDER_CLASS].size(),
+                    NOT_UNDER_CLASS);
+                ast.ast.classProps[NOT_UNDER_CLASS].emplace_back(
+                    sig.returnType, scopeID, newVarName, false);
                 globalVars.insert(newVarName);
             }
-            
-            // if it's method, we should skip first self variable caused it's imply by `x.x`
+
+            // if it's method, we should skip first self variable caused it's
+            // imply by `x.x`
             size_t i = 0;
 
-            if (funcKey.parentType != -1) {
+            if (funcKey.parentType != NOT_UNDER_CLASS) {
                 if (sig.selfType != -1) {
                     // if it's a method, add self as first parameter
-                    const auto selfVarKey =
-                        ctx.pickRandomVar(scopeID, sig.selfType, false);
+                    const auto selfVarKey = ctx.pickRandomVar(
+                        scopeID, sig.selfType, ObjectKind::mutable_var,
+                        ast.ast.scopes);
                     if (selfVarKey.empty()) {
                         state = MutationState::STATE_REROLL;
                         break;
@@ -219,46 +260,45 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             for (; i < sig.paramTypes.size(); ++i) {
                 auto paramType = sig.paramTypes[i];
                 const auto paramVarKey =
-                    ctx.pickRandomVar(scopeID, paramType, ctx.pickConst());
+                    pickTypedValueKey(ctx, scopeID, paramType, ast.ast.scopes);
                 if (paramVarKey.empty()) {
                     state = MutationState::STATE_REROLL;
                     break;
                 }
-                const auto &paramVar = unfoldKey(paramVarKey, ast.ast, ctx);
-                auto pName = paramVar.name;
-                if (paramVarKey.parentType != -1) {
-                    // TODO false workaround
-                    const auto parentVarKey = ctx.pickRandomVar(
-                        scopeID, paramVarKey.parentType, false);
-                    if (parentVarKey.empty()) {
-                        state = MutationState::STATE_REROLL;
-                        break;
-                    }
-                    const auto &p = unfoldKey(parentVarKey, ast.ast, ctx);
-                    pName = p.name + '.' + pName;
-                    insertGlobalVar(p, globalVars);
-                } else
-                    insertGlobalVar(paramVar, globalVars);
-                curr.fields.emplace_back(pName);
+                const auto pName = buildValueExprFromKey(
+                    paramVarKey, scopeID, ast.ast, ctx, globalVars);
+                if (!pName) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                curr.fields.emplace_back(*pName);
             }
             break;
         }
 
         case ASTNodeKind::Return: {
-            // if (scope.retType == -1) {
-            //     state = MutationState::STATE_REROLL;
-            //     break;
-            // }
+            if (scope.retType == NO_RETURN) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
             // Try to find a variable of the return type
             const auto retVarKey =
-                ctx.pickRandomVar(scopeID, 0, ctx.pickConst()); // disrespect original return type to check if crash
+                ctx.pickRandomVar(scopeID, 0, ctx.pickValueKind(),
+                                  ast.ast.scopes); // disrespect original return
+                                                   // type to check if crash
             if (!retVarKey.empty()) {
-                const auto &retVar = unfoldKey(retVarKey, ast.ast, ctx).name;
-                curr.fields = {{retVar}};
+                const auto retVar = buildValueExprFromKey(
+                    retVarKey, scopeID, ast.ast, ctx, globalVars);
+                if (!retVar) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                curr.fields = {{*retVar}};
             } else {
                 // Fall back to literal return for common types
                 if (scope.retType == ctx.intID) {
-                    static std::uniform_int_distribution<int64_t> pickRet(-255, 255);
+                    static std::uniform_int_distribution<int64_t> pickRet(-255,
+                                                                          255);
                     curr.fields = {{pickRet(rng)}};
                 } else if (scope.retType == ctx.boolID) {
                     curr.fields = {{(rng() % 2) == 0}};
@@ -286,28 +326,41 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             }
             TypeID t2 = slice[t1][rng() % slice[t1].size()];
 
-            const auto aKey = ctx.pickRandomVar(scopeID, t1, false);
+            const auto aKey = ctx.pickRandomVar(
+                scopeID, t1, ObjectKind::mutable_var, ast.ast.scopes);
             if (aKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto a2Key = ctx.pickRandomVar(scopeID, t2, ctx.pickConst());
+            const auto a2Key =
+                pickTypedValueKey(ctx, scopeID, t2, ast.ast.scopes);
             if (a2Key.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
             const auto &a = unfoldKey(aKey, ast.ast, ctx);
-            const auto &a2 = unfoldKey(a2Key, ast.ast, ctx).name;
-            const auto a3Key = ctx.pickRandomVar(scopeID, t2, ctx.pickConst());
+            const auto a2 =
+                buildValueExprFromKey(a2Key, scopeID, ast.ast, ctx, globalVars);
+            if (!a2) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const auto a3Key =
+                pickTypedValueKey(ctx, scopeID, t2, ast.ast.scopes);
             if (a3Key.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto &a3 = unfoldKey(a3Key, ast.ast, ctx).name;
+            const auto a3 =
+                buildValueExprFromKey(a3Key, scopeID, ast.ast, ctx, globalVars);
+            if (!a3) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
             // if (!a.isConst)
             //     globalVars.insert(a.name);
             insertGlobalVar(a, globalVars);
-            curr.fields = {{a.name}, {a3}, {BINARY_OPS[op]}, {a2}};
+            curr.fields = {{a.name}, {*a3}, {BINARY_OPS[op]}, {*a2}};
             break;
         }
 
@@ -319,19 +372,26 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 break;
             }
             TypeID t = slice[rng() % slice.size()];
-            const auto aKey = ctx.pickRandomVar(scopeID, t, false);
+            const auto aKey = ctx.pickRandomVar(
+                scopeID, t, ObjectKind::mutable_var, ast.ast.scopes);
             if (aKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
             const auto &a = unfoldKey(aKey, ast.ast, ctx);
-            const auto a2Key = ctx.pickRandomVar(scopeID, t, ctx.pickConst());
+            const auto a2Key =
+                pickTypedValueKey(ctx, scopeID, t, ast.ast.scopes);
             if (a2Key.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto &a2 = unfoldKey(a2Key, ast.ast, ctx).name;
-            curr.fields = {{a.name}, {UNARY_OPS[op]}, {a2}};
+            const auto a2 =
+                buildValueExprFromKey(a2Key, scopeID, ast.ast, ctx, globalVars);
+            if (!a2) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            curr.fields = {{a.name}, {UNARY_OPS[op]}, {*a2}};
             // if (!a.isConst)
             //     globalVars.insert(a.name);
             insertGlobalVar(a, globalVars);
@@ -355,23 +415,24 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 containerTypes[rng() % containerTypes.size()];
 
             const auto containerKey =
-                ctx.pickRandomVar(scopeID, containerType, false);
+                ctx.pickRandomVar(scopeID, containerType,
+                                  ObjectKind::mutable_var, ast.ast.scopes);
             if (containerKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
             const auto &container = unfoldKey(containerKey, ast.ast, ctx);
             auto containerName = container.name;
-            if (containerKey.parentType != -1) {
-                const auto parentKey = ctx.pickRandomVar(
-                    scopeID, containerKey.parentType, false);
+            if (containerKey.parentType != NOT_UNDER_CLASS) {
+                const auto parentKey =
+                    ctx.pickRandomVar(scopeID, containerKey.parentType,
+                                      ObjectKind::mutable_var, ast.ast.scopes);
                 if (parentKey.empty()) {
                     state = MutationState::STATE_REROLL;
                     break;
                 }
-                containerName =
-                    unfoldKey(parentKey, ast.ast, ctx).name + '.' +
-                    containerName;
+                containerName = unfoldKey(parentKey, ast.ast, ctx).name + '.' +
+                                containerName;
             }
             insertGlobalVar(container, globalVars);
 
@@ -380,37 +441,33 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                                    ? (rng() % 2 == 0 ? ctx.strID : ctx.intID)
                                    : ctx.intID;
             const auto indexKey =
-                ctx.pickRandomVar(scopeID, indexType, ctx.pickConst());
+                pickTypedValueKey(ctx, scopeID, indexType, ast.ast.scopes);
             if (indexKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto &indexVar = unfoldKey(indexKey, ast.ast, ctx);
-            auto indexName = indexVar.name;
-            insertGlobalVar(indexVar, globalVars);
+            const auto indexName = buildValueExprFromKey(
+                indexKey, scopeID, ast.ast, ctx, globalVars);
+            if (!indexName) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
 
             // Pick value: any type (triggers __index__ on bytearray assignment)
             const auto valueKey =
-                ctx.pickRandomVar(scopeID, ctx.pickConst());
+                ctx.pickRandomVar(scopeID, ctx.pickValueKind(), ast.ast.scopes);
             if (valueKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto &value = unfoldKey(valueKey, ast.ast, ctx);
-            auto valueName = value.name;
-            if (valueKey.parentType != -1) {
-                const auto parentKey = ctx.pickRandomVar(
-                    scopeID, valueKey.parentType, false);
-                if (parentKey.empty()) {
-                    state = MutationState::STATE_REROLL;
-                    break;
-                }
-                valueName =
-                    unfoldKey(parentKey, ast.ast, ctx).name + '.' + valueName;
+            const auto valueName = buildValueExprFromKey(
+                valueKey, scopeID, ast.ast, ctx, globalVars);
+            if (!valueName) {
+                state = MutationState::STATE_REROLL;
+                break;
             }
-            insertGlobalVar(value, globalVars);
 
-            curr.fields = {{containerName}, {indexName}, {valueName}};
+            curr.fields = {{containerName}, {*indexName}, {*valueName}};
             break;
         }
 
@@ -433,50 +490,46 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 containerTypes[rng() % containerTypes.size()];
 
             const auto containerKey =
-                ctx.pickRandomVar(scopeID, containerType, ctx.pickConst());
+                pickTypedValueKey(ctx, scopeID, containerType, ast.ast.scopes);
             if (containerKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto &container = unfoldKey(containerKey, ast.ast, ctx);
-            auto containerName = container.name;
-            if (containerKey.parentType != -1) {
-                const auto parentKey = ctx.pickRandomVar(
-                    scopeID, containerKey.parentType, ctx.pickConst());
-                if (parentKey.empty()) {
-                    state = MutationState::STATE_REROLL;
-                    break;
-                }
-                containerName =
-                    unfoldKey(parentKey, ast.ast, ctx).name + '.' +
-                    containerName;
+            const auto containerName = buildValueExprFromKey(
+                containerKey, scopeID, ast.ast, ctx, globalVars);
+            if (!containerName) {
+                state = MutationState::STATE_REROLL;
+                break;
             }
-            insertGlobalVar(container, globalVars);
 
             // Pick index
             TypeID indexType = (containerType == ctx.dictID)
                                    ? (rng() % 2 == 0 ? ctx.strID : ctx.intID)
                                    : ctx.intID;
             const auto indexKey =
-                ctx.pickRandomVar(scopeID, indexType, ctx.pickConst());
+                pickTypedValueKey(ctx, scopeID, indexType, ast.ast.scopes);
             if (indexKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            const auto &indexVar = unfoldKey(indexKey, ast.ast, ctx);
-            auto indexName = indexVar.name;
-            insertGlobalVar(indexVar, globalVars);
+            const auto indexName = buildValueExprFromKey(
+                indexKey, scopeID, ast.ast, ctx, globalVars);
+            if (!indexName) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
 
             // Create result variable (type=object, will be updated by runtime)
-            curr.fields = {{ast.ast.nameCnt}, {containerName}, {indexName}};
+            curr.fields = {{ast.ast.nameCnt}, {*containerName}, {*indexName}};
             {
                 auto &scope_ = ast.ast.scopes[scopeID];
                 scope_.variables.push_back(
                     static_cast<VarID>(ast.ast.variables.size()));
                 ast.ast.variables.emplace_back(
-                    NO_MODULE, ast.ast.classProps[-1].size(), -1);
-                ast.ast.classProps[-1].emplace_back(0, scopeID,
-                                                    ast.ast.nameCnt, false);
+                    NO_MODULE, ast.ast.classProps[NOT_UNDER_CLASS].size(),
+                    NOT_UNDER_CLASS);
+                ast.ast.classProps[NOT_UNDER_CLASS].emplace_back(
+                    0, scopeID, ast.ast.nameCnt, false);
             }
             globalVars.insert(ast.ast.nameCnt);
             bumpIdentifier(ast.ast.nameCnt);

@@ -23,6 +23,10 @@ std::optional<FunctionSignature>
 lookupMethodSig(TypeID tid, const std::string &name, const AST &ast,
                 const BuiltinContext &ctx, ScopeID startScopeID);
 bool bumpIdentifier(std::string &id);
+std::string buildFunctionCallG(const std::vector<FuzzingAST::TypeID> &paramTypes,
+                               ScopeID sid, const AST &ast,
+                               BuiltinContext &ctx,
+                               std::unordered_set<std::string> &globalVars);
 
 } // namespace FuzzingAST
 #endif // MUTATORS_HPP
