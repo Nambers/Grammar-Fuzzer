@@ -30,7 +30,7 @@ void FuzzingAST::fuzzerLoadCorpus(const std::string &savedPath,
     }
     for (const auto &entry : pathes) {
         std::ifstream in(entry);
-        if (in) {
+        if (in && in.peek() != std::ifstream::traits_type::eof()) {
             std::string content((std::istreambuf_iterator<char>(in)),
                                 std::istreambuf_iterator<char>());
             auto jsonData = nlohmann::json::parse(content);

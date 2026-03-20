@@ -19,5 +19,6 @@ build_lua/out_cov
 
 !readme.md
 !cov_map.py
+!errlog_to_ast_test.py
 !pipeline.svg
 !requirements.txt

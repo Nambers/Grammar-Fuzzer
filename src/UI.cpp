@@ -1,5 +1,5 @@
-#include "UI.hpp"
 #include "FuzzSchedulerState.hpp"
+#include "UI.hpp"
 #include "ast.hpp"
 #include <atomic>
 #include <chrono>
@@ -17,6 +17,7 @@ const static std::string stage_names[] = {
 
 extern uint32_t newEdgeCnt;
 extern uint32_t errCnt;
+extern uint32_t badState;
 extern uint32_t corpusSize;
 
 class RingBuffer {
@@ -185,11 +186,14 @@ void FuzzingAST::TUI::writeTUI(const FuzzingAST::FuzzSchedulerState &state,
                   text(std::to_string(newEdgeCnt)), separator(),
                   text("No Edge Executions: ") | dim,
                   text(std::to_string(state.noEdgeCount)), separator(),
-                  text("ErrCnt: ") | dim, text(std::to_string(errCnt))}),
+                  text("ErrCnt: ") | dim, text(std::to_string(errCnt)),
+                  separator(), text("BadStat: ") | dim,
+                  text(std::to_string(badState))}),
             hbox({text("ExecStalls: ") | dim,
                   text(std::to_string(state.execStallCount)), separator(),
-                  text("ScopeCnt: ") | dim, text(std::to_string(currentASTSize)),
-                  separator(), text("ExecThresh: ") | dim,
+                  text("ScopeCnt: ") | dim,
+                  text(std::to_string(currentASTSize)), separator(),
+                  text("ExecThresh: ") | dim,
                   text(std::to_string(state.execFailureThreshold())),
                   separator(), text("Saved Corpus Size: ") | dim,
                   text(std::to_string(corpusSize))}),

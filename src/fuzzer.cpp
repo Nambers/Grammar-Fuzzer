@@ -34,6 +34,7 @@ static size_t totalRounds = 0;
 static FuzzSchedulerState scheduler;
 uint32_t newEdgeCnt = 0;
 uint32_t errCnt = 0;
+uint32_t badState = 0;
 uint32_t corpusSize = 0;
 
 std::mt19937 rng(std::random_device{}());
@@ -56,6 +57,7 @@ static void crash_handler() {
     WRITE_STDOUT("crash! dump last state\n");
     WRITE_STDERR("\n===AST===\n");
     WRITE_STDERR(data_backup.c_str());
+    WRITE_STDERR("\n---CURRENT_NODE---\n");
     WRITE_STDERR(data_backup2.c_str());
     fuzzerEmitCacheCorpus();
     int cnt = 0;
@@ -162,23 +164,25 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
             data_backup += data_backup2;
             data_backup2.clear();
             updateTypes(globalVars, ast, ctx, execCtx);
-            scheduler.ctx.updateVars(ast.ast);
             history.push_back(data);
-        } else if (ret == Exe_Result::ERR) {
-            // update index to match with fixed result
-            scheduler.ctx.updateVars(ast.ast);
         } else if (ret == Exe_Result::TIMEOUT) {
             // timeout
             execCtx = getInitExecutionContext();
             // re-gain the context
             ret = runLines(history, ast.ast, ctx, execCtx);
-            if (ret == Exe_Result::ERR)
-                PANIC("Failed to replay lines after timeout");
-            else if (ret == Exe_Result::TIMEOUT)
-                PANIC("Timeout while replaying lines after timeout");
-        } else {
-            PANIC("Unexpected return code from runLine: {}", ret);
+            if (ret != Exe_Result::OK) {
+                if (ret == Exe_Result::ERR)
+                    ERROR("Failed to replay lines after timeout");
+                else if (ret == Exe_Result::TIMEOUT)
+                    ERROR("Timeout while replaying lines after timeout");
+                data_backup2.clear();
+                ++badState;
+                // something broke, gave up current declaration
+                return std::move(history);
+            }
+            updateTypes(globalVars, ast, ctx, execCtx);
         }
+        scheduler.ctx.updateVars(ast.ast);
         globalVars.clear();
     }
     return std::move(history);
