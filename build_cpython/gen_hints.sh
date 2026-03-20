@@ -5,11 +5,11 @@ set -e
 # Setup environment and type hints for vscode (CPython target)
 ###
 
-if ! echo "$PATH" | grep -q '/nix/store'; then
-    echo "This script is intended to be run inside a Nix shell."
-    echo "Use gen_hints_wrapper.sh"
+if [ "${CPYTHON_INST_SHELL:-}" != "1" ]; then
+    echo "plz run under cpython-inst.nix, or use gen_hints_wrapper.sh"
     exit 1
 fi
+
 
 SCRIPT_DIR=$(realpath "$(dirname $0)")
 ROOT_DIR="$SCRIPT_DIR/.."

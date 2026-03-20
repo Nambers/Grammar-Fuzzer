@@ -1,6 +1,11 @@
 #!/bin/sh
 set -e
 
+if [ "${CPYTHON_COV_SHELL:-}" != "1" ]; then
+    echo "plz run under cpython-cov.nix"
+    exit 1
+fi
+
 SCRIPT_DIR=$(realpath "$(dirname $0)")
 BUILD_COV_PATH="$SCRIPT_DIR/build_cov"
 

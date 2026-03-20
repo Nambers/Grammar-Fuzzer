@@ -20,5 +20,6 @@ in pkgs.mkShell {
     export CC="${pkgs.clang}/bin/clang";
     export CXX="${pkgs.clang}/bin/clang++";
     export NIX_ENFORCE_NO_NATIVE=0;
+    export LUA_SHELL=1;
   '';
 }

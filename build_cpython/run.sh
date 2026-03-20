@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "${CPYTHON_INST_SHELL:-}" != "1" ]; then
+    echo "plz run under cpython-inst.nix"
+    exit 1
+fi
+
 SCRIPT_DIR=$(realpath "$(dirname $0)")
 BUILD_PATH="$SCRIPT_DIR/build"
 

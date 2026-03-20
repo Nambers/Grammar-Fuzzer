@@ -5,9 +5,8 @@ set -e
 # Build the pyFuzzer (CPython target)
 ###
 
-if ! echo "$PATH" | grep -q '/nix/store'; then
-    echo "This script is intended to be run inside a Nix shell."
-    echo "Use build_wrapper.sh"
+if [ "${CPYTHON_INST_SHELL:-}" != "1" ]; then
+    echo "plz run under cpython-inst.nix, or use build_wrapper.sh"
     exit 1
 fi
 

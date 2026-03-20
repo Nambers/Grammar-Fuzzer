@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "${LUA_SHELL:-}" != "1" ]; then
+    echo "plz run under lua-pkg.nix"
+    exit 1
+fi
+
 SCRIPT_DIR=$(realpath "$(dirname $0)")
 BUILD_PATH="$SCRIPT_DIR/build"
 

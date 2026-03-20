@@ -44,5 +44,6 @@ in pkgs.mkShell {
     export PATH="${cpython-pkg}/bin:$PATH";
     export COMPILER_RT_LIBC="${pkgs.llvmPackages.compiler-rt-libc}/lib/linux";
     export ADDITIONAL_INCLUDES="${nlohmann_json_custom}/include:${pkgs.ftxui}/include";
+    export CPYTHON_INST_SHELL=1;
   '';
 }

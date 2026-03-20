@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+if [ "${LUA_SHELL:-}" != "1" ]; then
+    echo "plz run under lua-pkg.nix"
+    exit 1
+fi
+
+
 SCRIPT_DIR=$(realpath "$(dirname $0)")
 ROOT_DIR="$SCRIPT_DIR/.."
 TGT_DIR="$ROOT_DIR/targets/Lua"

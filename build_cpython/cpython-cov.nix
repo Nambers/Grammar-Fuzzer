@@ -40,5 +40,6 @@ in pkgs.mkShell {
     export NIX_ENFORCE_NO_NATIVE=0;
     export CPYTHON_LIB="${cpython-pkg}/lib";
     export PATH="${cpython-pkg}/bin:$PATH";
+    export CPYTHON_COV_SHELL=1;
   '';
 }
