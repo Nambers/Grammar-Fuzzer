@@ -21,6 +21,7 @@ int FuzzingAST::generate_execution(ASTData &ast, BuiltinContext &ctx) {
 
 int FuzzingAST::mutate_declaration(ASTData &astPtr, BuiltinContext &ctx) {
     AST ast = astPtr.ast;
+    data_backup2.clear();
     // avoid to mutate new generated scopes
     const auto s = ast.scopes.size();
     for (ScopeID sid = 0; sid < s; ++sid) {
@@ -33,8 +34,8 @@ int FuzzingAST::mutate_declaration(ASTData &astPtr, BuiltinContext &ctx) {
                 tmpAST = ast;
                 tmpAST = mutate_expression(tmpAST, sid, ctx);
                 data_backup = nlohmann::json(tmpAST).dump();
-                data_backup2.clear();
-            } while (reflectObject(tmpAST, tmpAST.scopes[sid], sid, ctx) != 0);
+            } while (reflectObject(tmpAST, tmpAST.scopes[sid], sid, ctx) !=
+                     Exe_Result::OK);
             ast = std::move(tmpAST);
         }
     }

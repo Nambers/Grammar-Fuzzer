@@ -520,17 +520,18 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
     PyErr_Clear();
 }
 
-static int runInternal(const AST &ast, BuiltinContext &ctx, PyObjectPtr &code,
-                       PyObject *dict, bool readResult = false,
-                       std::string *outStr = nullptr,
-                       uint32_t timeoutMs = 600) {
+static Exe_Result runInternal(const AST &ast, BuiltinContext &ctx,
+                              PyObjectPtr &code, PyObject *dict,
+                              bool readResult = false,
+                              std::string *outStr = nullptr,
+                              uint32_t timeoutMs = 600) {
     if (sigsetjmp(timeoutJmp, 1) == 0) {
         // NullStdIORedirect guard;
         if (readResult) {
             PyObjectPtr result(PyEval_EvalCode(code.get(), dict, dict));
             if (!result) {
                 if (PyErr_Occurred()) {
-                    return -1;
+                    return Exe_Result::ERR;
                 }
             }
             result.reset(PyEval_EvalCode(driverPyCodeObj, dict, dict));
@@ -553,7 +554,7 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObjectPtr &code,
                 PANIC("'result' from driver.py is not a string");
             }
             outStr->assign(PyUnicode_AsUTF8(rawJson));
-            return 0;
+            return Exe_Result::OK;
         } else {
             set_timeout_ms(timeoutMs);
             PyObjectPtr result(PyEval_EvalCode(code.get(), dict, dict));
@@ -562,10 +563,10 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObjectPtr &code,
             if (!result) {
                 if (PyErr_Occurred()) {
                     ++errCnt;
-                    return -1;
+                    return Exe_Result::ERR;
                 }
             }
-            return 0;
+            return Exe_Result::OK;
         }
     } else {
         clear_timeout();
@@ -577,13 +578,13 @@ static int runInternal(const AST &ast, BuiltinContext &ctx, PyObjectPtr &code,
         finalize();
 
         initialize(nullptr, nullptr);
-        return -2;
+        return Exe_Result::TIMEOUT;
     }
 }
 
-static inline int runASTStr(const std::string &re, const AST &ast,
-                            BuiltinContext &ctx, PyObject *dict, bool echo,
-                            uint32_t timeoutMs = 600) {
+static inline Exe_Result runASTStr(const std::string &re, const AST &ast,
+                                   BuiltinContext &ctx, PyObject *dict,
+                                   bool echo, uint32_t timeoutMs = 600) {
     if (echo) {
         std::cout << "[Generated Python]:\n" << re << "\n";
     }
@@ -592,29 +593,32 @@ static inline int runASTStr(const std::string &re, const AST &ast,
 
     PyObjectPtr code(Py_CompileString(re.c_str(), "<ast>", Py_file_input));
     if (PyErr_Occurred()) {
-        return -1;
+        return Exe_Result::ERR;
     }
 
     return runInternal(ast, ctx, code, dict, false, nullptr, timeoutMs);
 }
 
-int FuzzingAST::runLine(const ASTNode &node, AST &ast, BuiltinContext &ctx,
-                        std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
+Exe_Result FuzzingAST::runLine(const ASTNode &node, AST &ast,
+                               BuiltinContext &ctx,
+                               std::unique_ptr<ExecutionContext> &excCtx,
+                               bool echo) {
     std::ostringstream script;
     nodeToPython(script, node, ast, ctx, 0);
     const auto ret = runASTStr(
         script.str(), ast, ctx,
         reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo);
-    if (ret == -1)
+    if (ret == Exe_Result::ERR)
         errorCallback(ast, ctx, std::move(node));
-    else if (ret == -2)
+    else if (ret == Exe_Result::TIMEOUT)
         excCtx->releasePtr();
     return ret;
 }
 
-int FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
-                         BuiltinContext &ctx,
-                         std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
+Exe_Result FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
+                                BuiltinContext &ctx,
+                                std::unique_ptr<ExecutionContext> &excCtx,
+                                bool echo) {
     std::ostringstream script;
     for (auto nodeID : ast.scopes[0].declarations) {
         const auto &node = ast.declarations[nodeID];
@@ -628,29 +632,30 @@ int FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
     const auto ret = runASTStr(
         script.str(), ast, ctx,
         reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo, 2000);
-    if (ret == -1)
+    if (ret == Exe_Result::ERR)
         errorCallback(ast, ctx);
-    else if (ret == -2)
+    else if (ret == Exe_Result::TIMEOUT)
         excCtx->releasePtr();
     return ret;
 }
 
-int FuzzingAST::runAST(AST &ast, BuiltinContext &ctx,
-                       std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
+Exe_Result FuzzingAST::runAST(AST &ast, BuiltinContext &ctx,
+                              std::unique_ptr<ExecutionContext> &excCtx,
+                              bool echo) {
     std::ostringstream script;
     scopeToPython(script, 0, ast, ctx, 0);
     const auto ret = runASTStr(
         script.str(), ast, ctx,
         reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo);
-    if (ret == -1)
+    if (ret == Exe_Result::ERR)
         errorCallback(ast, ctx);
-    else if (ret == -2)
+    else if (ret == Exe_Result::TIMEOUT)
         excCtx->releasePtr();
     return ret;
 }
 
-int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
-                              BuiltinContext &ctx) {
+Exe_Result FuzzingAST::reflectObject(AST &ast, ASTScope &scope,
+                                     const ScopeID sid, BuiltinContext &ctx) {
     std::ostringstream script;
 
     for (NodeID id : scope.declarations) {
@@ -662,7 +667,7 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
     std::string re = script.str();
 
     if (re.empty())
-        return 0;
+        return Exe_Result::OK;
 
     PyObjectPtr code(Py_CompileString(re.c_str(), "<ast>", Py_file_input));
     if (PyErr_Occurred()) {
@@ -671,17 +676,17 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
 #endif
         PyErr_Clear();
         ERROR("Failed to compile decl code block:\n{}", re);
-        return -1;
+        return Exe_Result::ERR;
     }
 
     std::string jsonStr;
     auto excCtx = getInitExecutionContext();
-    int ret =
+    Exe_Result ret =
         runInternal(ast, ctx, code,
                     reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
                     true, &jsonStr);
-    if (ret != 0) {
-        if (ret == -2)
+    if (ret != Exe_Result::OK) {
+        if (ret == Exe_Result::TIMEOUT)
             excCtx->releasePtr();
         return ret;
     }
@@ -746,7 +751,7 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
         }
     }
     ctx.updateVars(ast);
-    return 0;
+    return Exe_Result::OK;
 }
 
 std::unique_ptr<ExecutionContext> FuzzingAST::getInitExecutionContext() {

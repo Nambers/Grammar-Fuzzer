@@ -60,6 +60,9 @@ buildValueExprFromKey(const PropKey &valueKey, ScopeID scopeID, const AST &ast,
             return std::nullopt;
         const auto &parent = unfoldKey(parentKey, ast, ctx);
         valueExpr = parent.name + '.' + valueExpr;
+        // NOTE: this is speculative while generate_line() is still rerolling.
+        // We intentionally allow `globalVars` to be an over-approximation; on
+        // reroll we rollback AST metadata, but not this set.
         insertGlobalVar(parent, globalVars);
     }
 
@@ -86,6 +89,25 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
     int attempts = 0;
 
     while (state == MutationState::STATE_REROLL && ++attempts < 500) {
+        const auto oldNameCnt = ast.ast.nameCnt;
+        const auto oldVarsSize = ast.ast.variables.size();
+        const auto oldGlobalPropsSize =
+            ast.ast.classProps[NOT_UNDER_CLASS].size();
+        const auto oldScopeVarsSize = ast.ast.scopes[scopeID].variables.size();
+        const auto rollbackAttemptSideEffects = [&]() {
+            ast.ast.nameCnt = oldNameCnt;
+            if (ast.ast.variables.size() > oldVarsSize)
+                ast.ast.variables.resize(oldVarsSize);
+            if (ast.ast.classProps.contains(NOT_UNDER_CLASS) &&
+                ast.ast.classProps[NOT_UNDER_CLASS].size() >
+                    oldGlobalPropsSize)
+                ast.ast.classProps[NOT_UNDER_CLASS].resize(oldGlobalPropsSize);
+            if (ast.ast.scopes[scopeID].variables.size() > oldScopeVarsSize)
+                ast.ast.scopes[scopeID].variables.resize(oldScopeVarsSize);
+            // Intentionally not rolling back `globalVars` here. It is used as
+            // a hint list only and can safely be a superset after rerolls.
+        };
+
         state = MutationState::STATE_OK;
         ASTNodeKind pick = static_cast<ASTNodeKind>(
             static_cast<int>(EXEC_NODE_START) + pickExec(rng));
@@ -539,6 +561,12 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
         default:
             PANIC("Unsupported execution node kind: {}",
                   static_cast<int>(pick));
+        }
+
+        if (state == MutationState::STATE_REROLL) {
+            // Hard rollback for symbol table side effects introduced during a
+            // failed attempt (fresh variable names, var indices, classProps).
+            rollbackAttemptSideEffects();
         }
     }
     if (attempts >= 500) {

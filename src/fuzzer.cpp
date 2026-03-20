@@ -38,7 +38,7 @@ uint32_t corpusSize = 0;
 
 std::mt19937 rng(std::random_device{}());
 
-static int testOneInput(ASTData &data, BuiltinContext &ctx) {
+static Exe_Result testOneInput(ASTData &data, BuiltinContext &ctx) {
     data_backup = nlohmann::json(data.ast).dump();
     auto tmp = getInitExecutionContext();
     return runAST(data.ast, ctx, tmp);
@@ -133,9 +133,9 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
     data_backup = nlohmann::json(ast.ast).dump() + "\n---DECL_END---\n";
     const auto declRet = runLines(history, ast.ast, ctx, execCtx);
     // get declarations
-    if (declRet != 0) {
+    if (declRet != Exe_Result::OK) {
         PANIC("Failed to run declarations.code={}", declRet);
-    };
+    }
     history.reserve(200);
     const auto scopeCnt = ast.ast.scopes.size();
     while (scheduler.noEdgeCount <= scheduler.execFailureThreshold() &&
@@ -158,26 +158,24 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
             // no new edge
             ++scheduler.noEdgeCount;
         }
-        if (ret == 0) {
+        if (ret == Exe_Result::OK) {
             data_backup += data_backup2;
             data_backup2.clear();
             updateTypes(globalVars, ast, ctx, execCtx);
             scheduler.ctx.updateVars(ast.ast);
             history.push_back(data);
-        } else if (ret == -1) {
+        } else if (ret == Exe_Result::ERR) {
             // update index to match with fixed result
             scheduler.ctx.updateVars(ast.ast);
-        } else if (ret == -2) {
+        } else if (ret == Exe_Result::TIMEOUT) {
             // timeout
             execCtx = getInitExecutionContext();
             // re-gain the context
             ret = runLines(history, ast.ast, ctx, execCtx);
-            if (ret != 0) {
-                if (ret == -1)
-                    PANIC("Failed to replay lines after timeout");
-                else if (ret == -2)
-                    PANIC("Timeout while replaying lines after timeout");
-            };
+            if (ret == Exe_Result::ERR)
+                PANIC("Failed to replay lines after timeout");
+            else if (ret == Exe_Result::TIMEOUT)
+                PANIC("Timeout while replaying lines after timeout");
         } else {
             PANIC("Unexpected return code from runLine: {}", ret);
         }
@@ -200,7 +198,7 @@ void FuzzingAST::fuzzerDriver() {
             data = scheduler.corpus[scheduler.idx];
         }
         // dummy check
-        if (testOneInput(data, scheduler.ctx) != 0) {
+        if (testOneInput(data, scheduler.ctx) != Exe_Result::OK) {
             PANIC("Initial AST is not valid.");
         }
     }

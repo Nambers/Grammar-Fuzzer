@@ -354,10 +354,10 @@ static void errorCallback(const std::string &errMsg, AST &ast,
 }
 
 // -- Execute a Lua string in state L -----------------------------------------
-static int runLuaStr(lua_State *L, const std::string &code, AST &ast,
-                     BuiltinContext &ctx, bool echo,
-                     std::optional<ASTNode> node = std::nullopt,
-                     uint32_t timeoutMs = 600) {
+static Exe_Result runLuaStr(lua_State *L, const std::string &code, AST &ast,
+                            BuiltinContext &ctx, bool echo,
+                            std::optional<ASTNode> node = std::nullopt,
+                            uint32_t timeoutMs = 600) {
     if (echo) {
         std::cout << "[Generated Lua]:\n" << code << "\n";
     }
@@ -374,31 +374,34 @@ static int runLuaStr(lua_State *L, const std::string &code, AST &ast,
                 errMsg = lua_tostring(L, -1);
             lua_pop(L, 1);
             errorCallback(errMsg, ast, ctx, std::move(node));
-            return -1;
+            return Exe_Result::ERR;
         }
-        return 0;
+        return Exe_Result::OK;
     } else {
         clear_timeout();
         ERROR("Lua execution timed out");
-        return -2;
+        return Exe_Result::TIMEOUT;
     }
 }
 
 // -- driver.hpp implementation -----------------------------------------------
-int FuzzingAST::runLine(const ASTNode &node, AST &ast, BuiltinContext &ctx,
-                        std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
+Exe_Result FuzzingAST::runLine(const ASTNode &node, AST &ast,
+                               BuiltinContext &ctx,
+                               std::unique_ptr<ExecutionContext> &excCtx,
+                               bool echo) {
     std::ostringstream script;
     nodeToLua(script, node, ast, ctx, 0);
     auto *L = reinterpret_cast<lua_State *>(excCtx->getContext());
     auto ret = runLuaStr(L, script.str(), ast, ctx, echo, std::move(node));
-    if (ret == -2)
+    if (ret == Exe_Result::TIMEOUT)
         excCtx->releasePtr();
     return ret;
 }
 
-int FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
-                         BuiltinContext &ctx,
-                         std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
+Exe_Result FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
+                                BuiltinContext &ctx,
+                                std::unique_ptr<ExecutionContext> &excCtx,
+                                bool echo) {
     std::ostringstream script;
     for (auto nodeID : ast.scopes[0].declarations) {
         const auto &node = ast.declarations[nodeID];
@@ -410,25 +413,26 @@ int FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
 
     auto *L = reinterpret_cast<lua_State *>(excCtx->getContext());
     auto ret = runLuaStr(L, script.str(), ast, ctx, echo, std::nullopt, 2000);
-    if (ret == -2)
+    if (ret == Exe_Result::TIMEOUT)
         excCtx->releasePtr();
     return ret;
 }
 
-int FuzzingAST::runAST(AST &ast, BuiltinContext &ctx,
-                       std::unique_ptr<ExecutionContext> &excCtx, bool echo) {
+Exe_Result FuzzingAST::runAST(AST &ast, BuiltinContext &ctx,
+                              std::unique_ptr<ExecutionContext> &excCtx,
+                              bool echo) {
     std::ostringstream script;
     scopeToLua(script, 0, ast, ctx, 0);
     auto *L = reinterpret_cast<lua_State *>(excCtx->getContext());
     auto ret = runLuaStr(L, script.str(), ast, ctx, echo);
-    if (ret == -2)
+    if (ret == Exe_Result::TIMEOUT)
         excCtx->releasePtr();
     return ret;
 }
 
 // -- reflectObject: run declarations, discover new types via Lua C API -------
-int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
-                              BuiltinContext &ctx) {
+Exe_Result FuzzingAST::reflectObject(AST &ast, ASTScope &scope,
+                                     const ScopeID sid, BuiltinContext &ctx) {
     std::ostringstream script;
     for (NodeID id : scope.declarations) {
         const auto &node = ast.declarations[id];
@@ -437,7 +441,7 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
     }
     std::string code = script.str();
     if (code.empty())
-        return 0;
+        return Exe_Result::OK;
 
     lua_State *L = newLuaState();
     int ret = luaL_dostring(L, code.c_str());
@@ -448,7 +452,7 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
 #endif
         lua_pop(L, 1);
         lua_close(L);
-        return -1;
+        return Exe_Result::ERR;
     }
 
     // iterate globals, discover tables with metatables → new class-like types
@@ -473,7 +477,7 @@ int FuzzingAST::reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
 
     lua_close(L);
     ctx.updateVars(ast);
-    return 0;
+    return Exe_Result::OK;
 }
 
 // -- Create a fresh Lua state as execution context ---------------------------
