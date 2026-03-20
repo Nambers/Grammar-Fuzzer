@@ -46,10 +46,11 @@ static void runASTStr(const std::string &re) {
     PyDict_SetItemString(dict, "__name__", name);
     PyDict_SetItemString(dict, "__builtins__", PyEval_GetBuiltins());
     PyObject *result = PyEval_EvalCode(code, dict, dict);
-    Py_DECREF(result);
-    Py_DECREF(code);
-    Py_DECREF(dict);
-    Py_DECREF(name);
+    Py_XDECREF(result);
+    Py_XDECREF(code);
+    Py_XDECREF(dict);
+    Py_XDECREF(name);
+
     // don't care about error
     PyErr_Clear();
 }
@@ -67,6 +68,10 @@ static void collect() {
 
         try {
             std::string content = readFile(filePath);
+            if (content.empty()) {
+                std::cerr << "[cov] file " << filePath << " is empty, skipped." << std::endl;
+                continue;
+            }
             nlohmann::json jsonData = nlohmann::json::parse(content);
             AST ast = jsonData.get<AST>();
             std::ostringstream astStream;
