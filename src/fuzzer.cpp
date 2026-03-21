@@ -286,8 +286,8 @@ void FuzzingAST::fuzzerDriver() {
         }
         case MutationPhase::FallbackOldCorpus: {
             // maybe don't remove current one?
-            scheduler.corpus.erase(scheduler.corpus.begin() + scheduler.idx);
-            --corpusSize;
+            // scheduler.corpus.erase(scheduler.corpus.begin() + scheduler.idx);
+            // --corpusSize;
             newEdgeCnt = 0;
             if (corpusSize > 0) {
                 // randomly fallback to one of all
