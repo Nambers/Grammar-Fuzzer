@@ -68,4 +68,3 @@ FuzzingAST::getPropByName(const std::string &name,
     }
     return std::nullopt;
 }
-

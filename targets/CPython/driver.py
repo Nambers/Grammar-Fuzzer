@@ -45,7 +45,6 @@ BLACKLIST_DUNDERS = {
     "__name__",
     "__qualname__",
     "__module__",
-    "__dict__",
     "__weakref__",
     "__subclasshook__",
     "__init_subclass__",

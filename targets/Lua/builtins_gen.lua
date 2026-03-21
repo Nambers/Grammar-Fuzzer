@@ -124,7 +124,6 @@ SIGS["ipairs"]        = { {T.table},                        T.object  }
 SIGS["error"]         = { {T.object},                       -1        }
 SIGS["warn"]          = { {T.string},                       -1        }
 SIGS["collectgarbage"]= { {},                               T.number  }
-SIGS["require"]       = { {T.string},                       T.object  }
 SIGS["load"]          = { {T.string},                       T.object  }
 SIGS["unpack"]        = { {T.table},                        T.object  }
 

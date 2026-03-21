@@ -45,16 +45,18 @@ void BuiltinContext::updateVars(const AST &ast) {
         }
     }
 
-    for (auto mid : ast.importedModules) {
-        for (const auto &kv : modulesProps[mid]) {
-            TypeID parentType = kv.first;
-            const auto &pis = kv.second;
-            for (size_t j = 0; j < pis.size(); ++j) {
-                const auto &pi = pis[j];
-                auto &index = scopeProviders[0].selectIndex(pi);
-                index[pi.type].emplace_back(mid, j, parentType);
-                index[0].emplace_back(mid, j,
-                                      parentType); // fallback
+    for (size_t i = 0; i < n; ++i) {
+        for (auto mid : ast.scopes[i].importedModules) {
+            for (const auto &kv : modulesProps[mid]) {
+                TypeID parentType = kv.first;
+                const auto &pis = kv.second;
+                for (size_t j = 0; j < pis.size(); ++j) {
+                    const auto &pi = pis[j];
+                    auto &index = scopeProviders[i].selectIndex(pi);
+                    index[pi.type].emplace_back(mid, j, parentType);
+                    index[0].emplace_back(mid, j,
+                                          parentType); // fallback
+                }
             }
         }
     }
@@ -124,17 +126,32 @@ PropKey BuiltinContext::pickRandomVar(ScopeID scopeID, TypeID type,
     auto &md = pd.selectDist(valueKind);
     if (!md.contains(type))
         type = 0;
-    auto &mp = md[type];
 
-    if (scopeID != 0 &&
-        (pd.useParent.at(static_cast<int>(valueKind))(rng) || mp.max() < 1)) {
-        return pickRandomVar(scopes[scopeID].parent, type, valueKind, scopes);
+    auto itDist = md.find(type);
+    if (itDist == md.end()) {
+        if (scopeID != 0) {
+            const auto parent = scopes[scopeID].parent;
+            if (parent >= 0)
+                return pickRandomVar(parent, type, valueKind, scopes);
+        }
+        return PropKey::emptyKey();
     }
 
-    if (mp.max() < 1)
+    auto &index = pd.selectIndex(valueKind);
+    auto itVec = index.find(type);
+    const bool hasCand = (itVec != index.end() && !itVec->second.empty() &&
+                          itDist->second.max() < itVec->second.size());
+
+    if (scopeID != 0 &&
+        (pd.useParent.at(static_cast<int>(valueKind))(rng) || !hasCand)) {
+        const auto parent = scopes[scopeID].parent;
+        if (parent >= 0)
+            return pickRandomVar(parent, type, valueKind, scopes);
+    }
+
+    if (!hasCand)
         return PropKey::emptyKey();
-    else
-        return pd.selectIndex(valueKind).at(type).at(mp(rng));
+    return itVec->second[itDist->second(rng)];
 }
 
 PropKey BuiltinContext::pickRandomVar(ScopeID scopeID, ObjectKind valueKind,

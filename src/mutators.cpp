@@ -5,8 +5,8 @@
 
 using namespace FuzzingAST;
 
-extern std::string data_backup;
-extern std::string data_backup2;
+extern std::string ast_backup_str;
+extern std::string history_backup_str;
 
 constexpr size_t NUM_MUTATE = 4;
 
@@ -21,7 +21,7 @@ int FuzzingAST::generate_execution(ASTData &ast, BuiltinContext &ctx) {
 
 int FuzzingAST::mutate_declaration(ASTData &astPtr, BuiltinContext &ctx) {
     AST ast = astPtr.ast;
-    data_backup2.clear();
+    history_backup_str.clear();
     // avoid to mutate new generated scopes
     const auto s = ast.scopes.size();
     for (ScopeID sid = 0; sid < s; ++sid) {
@@ -33,7 +33,7 @@ int FuzzingAST::mutate_declaration(ASTData &astPtr, BuiltinContext &ctx) {
                 // parts
                 tmpAST = ast;
                 tmpAST = mutate_expression(tmpAST, sid, ctx);
-                data_backup = nlohmann::json(tmpAST).dump();
+                ast_backup_str = nlohmann::json(tmpAST).dump();
             } while (reflectObject(tmpAST, tmpAST.scopes[sid], sid, ctx) !=
                      Exe_Result::OK);
             ast = std::move(tmpAST);

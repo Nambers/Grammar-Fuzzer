@@ -24,6 +24,11 @@
 
 using namespace FuzzingAST;
 
+// need to be consist with the one in builtins.py
+constexpr std::array TARGET_LIBS = {"math", "marshal", "datetime"};
+extern const std::span<const char *const> targetLibs(TARGET_LIBS);
+std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
+
 extern uint32_t newEdgeCnt;
 extern uint32_t errCnt;
 static PyObject *driverPyCodeObj;
@@ -250,14 +255,28 @@ static std::string getQuoteText(const std::string &str, size_t &pos) {
 static void errorCallback(AST &ast, BuiltinContext &ctx,
                           std::optional<ASTNode> node = std::nullopt) {
     PyObjectPtr exc(PyErr_GetRaisedException());
-    PyObjectPtr errVal(PyObject_Str(exc.get()));
-    std::string errMsg(PyUnicode_AsUTF8(errVal.get()));
+    std::string errMsg("<unknown python error>");
+    if (exc) {
+        PyObjectPtr errVal(PyObject_Str(exc.get()));
+        if (errVal) {
+            const char *utf8Err = PyUnicode_AsUTF8(errVal.get());
+            if (utf8Err) {
+                errMsg = utf8Err;
+            } else {
+                // conversion failure while reporting the original exception
+                PyErr_Clear();
+            }
+        } else {
+            // stringify failure while reporting the original exception
+            PyErr_Clear();
+        }
+    }
 #ifndef DISABLE_DEBUG_OUTPUT
     // PyErr_Print();
     ERROR("Failed to run code: {}", errMsg);
 #endif
     // fix builtin sig dynamically
-    if (PyErr_GivenExceptionMatches(exc.get(), PyExc_TypeError)) {
+    if (exc && PyErr_GivenExceptionMatches(exc.get(), PyExc_TypeError)) {
         bool handled = false;
         const static std::string badUnaryOp("bad operand type for unary ");
         const static std::string noAttr(" has no attribute ");
@@ -309,13 +328,13 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                     // class name)
                     handled = true;
                     std::string obj = "";
-                    if (node->kind == ASTNodeKind::Call) {
+                    if (node && node->kind == ASTNodeKind::Call) {
                         obj = std::get<std::string>(node->fields[0].val);
                         obj = obj.substr(0, obj.find('.'));
-                    } else if (node->kind == ASTNodeKind::GetProp) {
+                    } else if (node && node->kind == ASTNodeKind::GetProp) {
                         obj = std::get<std::string>(node->fields[1].val);
                         obj = obj.substr(0, obj.find('.'));
-                    } else if (node->kind == ASTNodeKind::SetProp) {
+                    } else if (node && node->kind == ASTNodeKind::SetProp) {
                         obj = std::get<std::string>(node->fields[0].val);
                         obj = obj.substr(0, obj.find('.'));
                     } else
@@ -524,7 +543,7 @@ static Exe_Result runInternal(const AST &ast, BuiltinContext &ctx,
                               PyObjectPtr &code, PyObject *dict,
                               bool readResult = false,
                               std::string *outStr = nullptr,
-                              uint32_t timeoutMs = 600) {
+                              uint32_t timeoutMs = RUNLINE_TIMEOUT_MS) {
     if (sigsetjmp(timeoutJmp, 1) == 0) {
         // NullStdIORedirect guard;
         if (readResult) {
@@ -584,7 +603,8 @@ static Exe_Result runInternal(const AST &ast, BuiltinContext &ctx,
 
 static inline Exe_Result runASTStr(const std::string &re, const AST &ast,
                                    BuiltinContext &ctx, PyObject *dict,
-                                   bool echo, uint32_t timeoutMs = 600) {
+                                   bool echo,
+                                   uint32_t timeoutMs = RUNLINE_TIMEOUT_MS) {
     if (echo) {
         std::cout << "[Generated Python]:\n" << re << "\n";
     }
@@ -629,9 +649,10 @@ Exe_Result FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
     for (const auto &node : nodes) {
         nodeToPython(script, node, ast, ctx, 0);
     }
-    const auto ret = runASTStr(
-        script.str(), ast, ctx,
-        reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo, 2000);
+    const auto ret =
+        runASTStr(script.str(), ast, ctx,
+                  reinterpret_cast<PyObject *>(excCtx.get()->getContext()),
+                  echo, RUNLINES_TIMEOUT_MS);
     if (ret == Exe_Result::ERR)
         errorCallback(ast, ctx);
     else if (ret == Exe_Result::TIMEOUT)
@@ -762,14 +783,12 @@ std::unique_ptr<ExecutionContext> FuzzingAST::getInitExecutionContext() {
     return std::make_unique<PythonExecutionContext>(std::move(dict));
 }
 
-void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
-                             ASTData &ast, BuiltinContext &ctx,
+void FuzzingAST::updateTypes(ASTData &ast, BuiltinContext &ctx,
                              std::unique_ptr<ExecutionContext> &excCtx) {
     PyObject *dict = reinterpret_cast<PyObject *>(excCtx.get()->getContext());
     // retrieve variable then get type str then match
     PyObjectPtr keys(PyDict_Keys(dict));
     PyObjectPtr iter(PyObject_GetIter(keys.get()));
-    // for (const auto &varName : globalVars) {
     for (PyObject *key = PyIter_Next(iter.get()); key;
          key = PyIter_Next(iter.get())) {
         if (!PyUnicode_Check(key)) {

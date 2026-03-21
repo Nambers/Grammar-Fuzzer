@@ -26,8 +26,7 @@ Exe_Result reflectObject(AST &ast, ASTScope &scope, const ScopeID sid,
                          BuiltinContext &ctx);
 void dummyAST(ASTData &data, const BuiltinContext &scheduler);
 std::unique_ptr<ExecutionContext> getInitExecutionContext();
-void updateTypes(const std::unordered_set<std::string> &globalVars,
-                 ASTData &ast, BuiltinContext &ctx,
+void updateTypes(ASTData &ast, BuiltinContext &ctx,
                  std::unique_ptr<ExecutionContext> &excCtx);
 } // namespace FuzzingAST
 

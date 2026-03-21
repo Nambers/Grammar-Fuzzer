@@ -1,4 +1,5 @@
 #include "dumper.hpp"
+#include <iostream>
 
 using namespace FuzzingAST;
 

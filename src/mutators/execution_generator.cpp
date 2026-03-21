@@ -60,10 +60,9 @@ buildValueExprFromKey(const PropKey &valueKey, ScopeID scopeID, const AST &ast,
             return std::nullopt;
         const auto &parent = unfoldKey(parentKey, ast, ctx);
         valueExpr = parent.name + '.' + valueExpr;
-        // NOTE: this is speculative while generate_line() is still rerolling.
-        // We intentionally allow `globalVars` to be an over-approximation; on
-        // reroll we rollback AST metadata, but not this set.
-        insertGlobalVar(parent, globalVars);
+        if (std::find(ctx.types.begin(), ctx.types.end(), parent.name) ==
+            ctx.types.end())
+            insertGlobalVar(parent, globalVars);
     }
 
     if (value.isCallable) {
@@ -88,25 +87,22 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
     auto &curr = node;
     int attempts = 0;
 
+    auto &scopeVars = ast.ast.scopes[scopeID].variables;
+    const auto varsSizeBefore = ast.ast.variables.size();
+    const auto scopeVarsSizeBefore = scopeVars.size();
+    auto &globalProps = ast.ast.classProps[NOT_UNDER_CLASS];
+    const auto globalPropsSizeBefore = globalProps.size();
+    const auto nameCntBefore = ast.ast.nameCnt;
+
     while (state == MutationState::STATE_REROLL && ++attempts < 500) {
-        const auto oldNameCnt = ast.ast.nameCnt;
-        const auto oldVarsSize = ast.ast.variables.size();
-        const auto oldGlobalPropsSize =
-            ast.ast.classProps[NOT_UNDER_CLASS].size();
-        const auto oldScopeVarsSize = ast.ast.scopes[scopeID].variables.size();
-        const auto rollbackAttemptSideEffects = [&]() {
-            ast.ast.nameCnt = oldNameCnt;
-            if (ast.ast.variables.size() > oldVarsSize)
-                ast.ast.variables.resize(oldVarsSize);
-            if (ast.ast.classProps.contains(NOT_UNDER_CLASS) &&
-                ast.ast.classProps[NOT_UNDER_CLASS].size() >
-                    oldGlobalPropsSize)
-                ast.ast.classProps[NOT_UNDER_CLASS].resize(oldGlobalPropsSize);
-            if (ast.ast.scopes[scopeID].variables.size() > oldScopeVarsSize)
-                ast.ast.scopes[scopeID].variables.resize(oldScopeVarsSize);
-            // Intentionally not rolling back `globalVars` here. It is used as
-            // a hint list only and can safely be a superset after rerolls.
-        };
+        if (attempts > 1) {
+            // Hard rollback for symbol table side effects introduced during a
+            // failed attempt (fresh variable names, var indices, classProps).
+            ast.ast.variables.resize(varsSizeBefore);
+            scopeVars.resize(scopeVarsSizeBefore);
+            globalProps.resize(globalPropsSizeBefore);
+            ast.ast.nameCnt = nameCntBefore;
+        }
 
         state = MutationState::STATE_OK;
         ASTNodeKind pick = static_cast<ASTNodeKind>(
@@ -153,10 +149,11 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 }
                 const auto &v1p = unfoldKey(v1pKey, ast.ast, ctx);
                 v1Name = v1p.name + '.' + v1Name;
-                // globalVars.insert(v1pName);
-                insertGlobalVar(v1p, globalVars);
+                // if v1p is instance, instead of type (class static method)
+                if (std::find(ctx.types.begin(), ctx.types.end(), v1p.name) ==
+                    ctx.types.end())
+                    insertGlobalVar(v1p, globalVars);
             } else
-                // globalVars.insert(v1);
                 insertGlobalVar(v1, globalVars);
 
             curr.fields = {{v1Name}, {*v2Name}};
@@ -263,8 +260,9 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                         break;
                     }
                     const auto &selfVar = unfoldKey(selfVarKey, ast.ast, ctx);
-                    // globalVars.insert(selfVar);
-                    insertGlobalVar(selfVar, globalVars);
+                    if (std::find(ctx.types.begin(), ctx.types.end(),
+                                  selfVar.name) == ctx.types.end())
+                        insertGlobalVar(selfVar, globalVars);
                     // xxx.yyy(...)
                     curr.fields[1] = {selfVar.name + '.' + fname};
                     // or static usage: yyy(xxx, ...)
@@ -379,8 +377,6 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 state = MutationState::STATE_REROLL;
                 break;
             }
-            // if (!a.isConst)
-            //     globalVars.insert(a.name);
             insertGlobalVar(a, globalVars);
             curr.fields = {{a.name}, {*a3}, {BINARY_OPS[op]}, {*a2}};
             break;
@@ -414,8 +410,6 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 break;
             }
             curr.fields = {{a.name}, {UNARY_OPS[op]}, {*a2}};
-            // if (!a.isConst)
-            //     globalVars.insert(a.name);
             insertGlobalVar(a, globalVars);
             break;
         }
@@ -561,12 +555,6 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
         default:
             PANIC("Unsupported execution node kind: {}",
                   static_cast<int>(pick));
-        }
-
-        if (state == MutationState::STATE_REROLL) {
-            // Hard rollback for symbol table side effects introduced during a
-            // failed attempt (fresh variable names, var indices, classProps).
-            rollbackAttemptSideEffects();
         }
     }
     if (attempts >= 500) {

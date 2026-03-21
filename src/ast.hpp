@@ -29,6 +29,11 @@ constexpr TypeID OBJECT_TYPE = 0;
 
 constexpr size_t SCOPE_MAX_TYPE = 200;
 constexpr size_t MAX_SCOPE_CNT = 20;
+constexpr size_t MAX_GEN_HISTORY = 100;
+
+constexpr uint32_t RUNLINES_TIMEOUT_MS = 1000;
+constexpr uint32_t RUNLINE_TIMEOUT_MS = 500;
+
 constexpr std::array BINARY_OPS{"+",  "-",  "*",  "/", "%",  "**",
                                 "//", "==", "!=", "<", ">",  "<=",
                                 ">=", "&",  "|",  "^", "<<", ">>"};
@@ -274,6 +279,7 @@ class ASTScope {
     std::vector<std::string> types = {};
     std::vector<TypeID> inheritedTypes = {};
     std::vector<VarID> variables = {};
+    std::unordered_set<ModuleID> importedModules = {};
 };
 
 class AST {
@@ -284,7 +290,6 @@ class AST {
     std::vector<ASTNode> expressions = {};
     // variables treated as parentType = -1(no parent), ModuleID = -1(no module)
     std::vector<PropKey> variables = {};
-    std::unordered_set<ModuleID> importedModules = {};
     // we don't do normal function in fuzzing,
     // bc it is very unlikely to trigger bugs
     // std::vector<PropInfo> functions;
@@ -330,13 +335,6 @@ inline PropInfo &unfoldKey(const PropKey &key, AST &ast, BuiltinContext &ctx) {
     if (key.moduleID > 0)
         return ctx.modulesProps.at(key.moduleID).at(key.parentType).at(key.idx);
     return ast.classProps.at(key.parentType).at(key.idx);
-}
-
-inline void insertGlobalVar(const std::string &varName, bool isConst,
-                            bool isArg,
-                            std::unordered_set<std::string> &globalVars) {
-    if (!isConst && !isArg)
-        globalVars.insert(varName);
 }
 
 inline void insertGlobalVar(const PropInfo &varProp,

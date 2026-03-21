@@ -18,6 +18,10 @@
 
 using namespace FuzzingAST;
 
+constexpr std::array TARGET_LIBS = {"math"};
+extern const std::span targetLibs(TARGET_LIBS);
+std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
+
 extern uint32_t newEdgeCnt;
 extern uint32_t errCnt;
 
@@ -357,7 +361,7 @@ static void errorCallback(const std::string &errMsg, AST &ast,
 static Exe_Result runLuaStr(lua_State *L, const std::string &code, AST &ast,
                             BuiltinContext &ctx, bool echo,
                             std::optional<ASTNode> node = std::nullopt,
-                            uint32_t timeoutMs = 600) {
+                            uint32_t timeoutMs = RUNLINE_TIMEOUT_MS) {
     if (echo) {
         std::cout << "[Generated Lua]:\n" << code << "\n";
     }
@@ -412,7 +416,8 @@ Exe_Result FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
         nodeToLua(script, node, ast, ctx, 0);
 
     auto *L = reinterpret_cast<lua_State *>(excCtx->getContext());
-    auto ret = runLuaStr(L, script.str(), ast, ctx, echo, std::nullopt, 2000);
+    auto ret = runLuaStr(L, script.str(), ast, ctx, echo, std::nullopt,
+                         RUNLINES_TIMEOUT_MS);
     if (ret == Exe_Result::TIMEOUT)
         excCtx->releasePtr();
     return ret;
@@ -487,8 +492,7 @@ std::unique_ptr<ExecutionContext> FuzzingAST::getInitExecutionContext() {
 }
 
 // -- Update variable types after execution -----------------------------------
-void FuzzingAST::updateTypes(const std::unordered_set<std::string> &globalVars,
-                             ASTData &ast, BuiltinContext &ctx,
+void FuzzingAST::updateTypes(ASTData &ast, BuiltinContext &ctx,
                              std::unique_ptr<ExecutionContext> &excCtx) {
     lua_State *L = reinterpret_cast<lua_State *>(excCtx->getContext());
 

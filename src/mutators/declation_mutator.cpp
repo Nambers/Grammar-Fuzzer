@@ -9,7 +9,7 @@ using namespace FuzzingAST;
 extern std::mt19937 rng;
 extern void havoc(std::string &data, std::size_t max_sz,
                   std::size_t max_havoc_rounds = 16);
-// constexpr std::array TARGET_LIBS = {"math",
+// constexpr std::array targetLibs = {"math",
 //                                     "random",
 //                                     "os",
 //                                     "sys",
@@ -26,8 +26,10 @@ extern void havoc(std::string &data, std::size_t max_sz,
 //                                     "logging",
 //                                     "threading",
 //                                     "multiprocessing"};
-// TODO
-constexpr std::array TARGET_LIBS = {"math"};
+
+extern const std::span<const char *const> targetLibs;
+extern std::uniform_int_distribution<int> distLib;
+
 /*
 all constants mutating - str/bytes by havoc, int/float/bool by rng
 pick:
@@ -43,9 +45,9 @@ enum class MutationPick {
 
 constexpr static std::array PICK_MUTATION_WEIGHT = {
     30, // AddFunction
-    9,  // AddClass
+    12,  // AddClass
     20, // AddVariable
-    1,  // AddImport
+    6,  // AddImport
 };
 static_assert(PICK_MUTATION_WEIGHT.size() ==
                   static_cast<int>(MutationPick::AddImport) + 1,
@@ -53,8 +55,6 @@ static_assert(PICK_MUTATION_WEIGHT.size() ==
 
 static std::discrete_distribution<int> dist(PICK_MUTATION_WEIGHT.begin(),
                                             PICK_MUTATION_WEIGHT.end());
-
-static std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
 
 AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                                   BuiltinContext &ctx) {
@@ -165,9 +165,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
 
                     funScope.variables.push_back(ast.variables.size());
                     ast.variables.emplace_back(
-                        NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(), NOT_UNDER_CLASS);
-                    ast.classProps[NOT_UNDER_CLASS].emplace_back(pt, funSid, arg,
-                                                          false, false, true);
+                        NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(),
+                        NOT_UNDER_CLASS);
+                    ast.classProps[NOT_UNDER_CLASS].emplace_back(
+                        pt, funSid, arg, false, false, true);
                     bumpIdentifier(arg);
                     ast.declarations[funNodeID].fields.emplace_back(pt);
                 }
@@ -269,9 +270,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     fun.fields.emplace_back(arg);
                     funScope.variables.push_back(ast.variables.size());
                     ast.variables.emplace_back(
-                        NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(), NOT_UNDER_CLASS);
-                    ast.classProps[NOT_UNDER_CLASS].emplace_back(pt, funSid, arg,
-                                                          false, false, true);
+                        NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(),
+                        NOT_UNDER_CLASS);
+                    ast.classProps[NOT_UNDER_CLASS].emplace_back(
+                        pt, funSid, arg, false, false, true);
                     bumpIdentifier(arg);
                     fun.fields.emplace_back(pt);
                 }
@@ -316,8 +318,10 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     globalVars.reserve(sig->paramTypes.size());
                     auto callExpr = buildFunctionCallG(sig->paramTypes, sid,
                                                        ast, ctx, globalVars);
-                    if (callExpr.empty())
+                    if (callExpr.empty()) {
+                        state = MutationState::STATE_REROLL;
                         break; // reroll if failed to pick vars
+                    }
                     var.fields[1].val = typeName + callExpr;
                     if (!globalVars.empty() && sid != 0) {
                         // filter out global variables
@@ -353,7 +357,8 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 NodeID varID = ast.declarations.size();
                 scope.variables.push_back(ast.variables.size());
                 ast.variables.emplace_back(
-                    NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(), NOT_UNDER_CLASS);
+                    NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(),
+                    NOT_UNDER_CLASS);
                 ast.classProps[NOT_UNDER_CLASS].emplace_back(
                     tid, sid, std::get<std::string>(var.fields[0].val));
                 scope.declarations.push_back(varID);
@@ -364,12 +369,17 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
         case MutationPick::AddImport: {
             NodeID impID = ast.declarations.size();
             ModuleID mid = distLib(rng);
+            if (ast.scopes[sid].importedModules.contains(mid + 1)) {
+                state = MutationState::STATE_REROLL;
+                break;
+            }
             ASTNode imp;
             imp.kind = ASTNodeKind::Import;
-            imp.fields = {ASTNodeValue{TARGET_LIBS[mid]}};
+            imp.fields = {ASTNodeValue{targetLibs[mid]}};
             ast.scopes[sid].declarations.push_back(ast.declarations.size());
             ast.declarations.push_back(imp);
-            ast.importedModules.insert(mid + 1); // moduleID starts from 1
+            ast.scopes[sid].importedModules.insert(mid +
+                                                   1); // moduleID starts from 1
             break;
         }
         } // switch
