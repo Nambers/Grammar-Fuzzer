@@ -6,9 +6,11 @@ Syntax aware token/source codes text mutation based fuzzer.
 ## Targets
 
 - CPython
-- JavaScript TODO
-- LUA TODO
-- etc.
+- LUA
+- QuickJS
+- TODO
+
+> Notice: driver code of targets other than CPython are mostly maintained by AI
 
 ## How to use
 
