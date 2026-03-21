@@ -93,7 +93,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
         // do other mutations
         MutationPick pick;
         if (ast.scopes.size() > MAX_SCOPE_CNT)
-            pick = static_cast<MutationPick>(static_cast<int>(pick) % 2);
+            pick = static_cast<MutationPick>(rng() % 2 + 2); // only add variable or import
         else
             pick = static_cast<MutationPick>(dist(rng));
 

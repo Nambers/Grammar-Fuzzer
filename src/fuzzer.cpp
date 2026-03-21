@@ -126,6 +126,8 @@ void FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
             }
             INFO("Loading saved corpus from: {}", savedPath);
             fuzzerLoadCorpus(savedPath, scheduler.corpus);
+            // the first one is always blank
+            scheduler.corpus.insert(scheduler.corpus.begin(), {});
             scheduler.idx =
                 scheduler.corpus.empty() ? 0 : scheduler.corpus.size() - 1;
         }
@@ -217,6 +219,8 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
 }
 
 void FuzzingAST::fuzzerDriver() {
+    // percentage of start from new corpus instead of fallback to one
+    static std::bernoulli_distribution startOver(0.1);
     cacheCorpus.reserve(MAX_CACHE_SIZE);
     loadBuiltinsFuncs(scheduler.ctx);
     initPrimitiveTypes(scheduler.ctx);
@@ -289,17 +293,24 @@ void FuzzingAST::fuzzerDriver() {
             // scheduler.corpus.erase(scheduler.corpus.begin() + scheduler.idx);
             // --corpusSize;
             newEdgeCnt = 0;
-            if (corpusSize > 0) {
-                // randomly fallback to one of all
-                scheduler.idx = rng() % corpusSize;
+            // if (corpusSize > 0) {
+            // randomly fallback to one of all, or startOver from blank
+            scheduler.idx = rng() % corpusSize;
+            if (startOver(rng))
+                scheduler.idx = 0;
+
+            if (scheduler.idx > 0) {
                 scheduler.update(
                     0, scheduler.corpus.at(scheduler.idx).ast.scopes.size());
                 break;
-            } else {
-                scheduler.idx = 0;
-                scheduler.corpus.push_back({});
-                ++corpusSize;
             }
+            // if idx == 0, fallthrough
+            // } else {
+            //     // unlikely
+            //     scheduler.idx = 0;
+            //     scheduler.corpus.push_back({});
+            //     ++corpusSize;
+            // }
             [[fallthrough]];
         }
         case MutationPhase::DeclarationMutation: {

@@ -19,6 +19,7 @@ class FuzzSchedulerState {
 	MutationPhase phase = MutationPhase::ExecutionGeneration;
 	// corpus index
 	uint idx = 0;
+	// the first one is always blank
 	std::deque<ASTData> corpus;
 
 	// if failed to find new edge for 5 mutated declaration in a row, fallback

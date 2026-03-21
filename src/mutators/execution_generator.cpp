@@ -569,6 +569,9 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
     // const int NUM_GEN = ast.ast.scopes[scopeID].declarations.size() * 2;
     constexpr int NUM_GEN = 70; // TODO
     ASTScope &scope = ast.ast.scopes[scopeID];
+    // Fresh generation pass: avoid carrying stale return node from previous
+    // rounds, which may later point to invalid/placeholder expressions.
+    scope.retNodeID = -1;
     scope.expressions.resize(NUM_GEN, -1);
 
     std::unordered_set<std::string> globalVars;
@@ -577,11 +580,11 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
         auto &nodeId = scope.expressions[i];
         nodeId = ast.ast.expressions.size();
         ast.ast.expressions.emplace_back();
-        const auto oldExprCount = ast.ast.expressions.size();
         ASTNode node;
         if (generate_line(node, ast, ctx, globalVars, scopeID, scope) != 0) {
             scope.expressions.resize(i);
-            ast.ast.expressions.resize(oldExprCount);
+            // remove the placeholder inserted for this failed generation step
+            ast.ast.expressions.resize(nodeId);
             break;
         }
         ast.ast.expressions[nodeId] = std::move(node);
