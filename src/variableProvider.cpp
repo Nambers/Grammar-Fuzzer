@@ -17,6 +17,9 @@ void BuiltinContext::updateVars(const AST &ast) {
     typeList_.assign(n, {});
     typeDist_.assign(n, {});
 
+    if (n > 0)
+        scopeProviders[0] = builtinsScopeCache;
+
     // any function is callable in scope, if they had variable for class
     // any variable in class should be usable in parent and child scope, if they
     // had variable for class but right now we lucky don't need to consider
@@ -26,22 +29,13 @@ void BuiltinContext::updateVars(const AST &ast) {
         for (size_t j = 0; j < pis.size(); ++j) {
             const auto &pi = pis[j];
 
-            auto &index = scopeProviders.at(pi.scope).selectIndex(pi);
+            if (pi.scope < 0 || static_cast<size_t>(pi.scope) >= n)
+                continue;
+
+            auto &index = scopeProviders[pi.scope].selectIndex(pi);
             index[pi.type].emplace_back(NO_MODULE, j, tid);
             index[0].emplace_back(NO_MODULE, j,
                                   tid); // fallback to add to object
-        }
-    }
-
-    for (const auto &kv : builtinsProps) {
-        TypeID parentType = kv.first;
-        const auto &pis = kv.second;
-        for (size_t j = 0; j < pis.size(); ++j) {
-            const auto &pi = pis[j];
-            auto &index = scopeProviders[0].selectIndex(pi);
-            index[pi.type].emplace_back(BUILTIN_MODULE_ID, j, parentType);
-            index[0].emplace_back(BUILTIN_MODULE_ID, j,
-                                  parentType); // fallback
         }
     }
 
@@ -174,14 +168,7 @@ PropKey BuiltinContext::pickRandomMethod(TypeID tid) {
     if (itD == methodDist_.end())
         return PropKey::emptyKey();
 
-    size_t idx = itD->second(rng);
-
-    if (auto itB = builtinsProps.find(tid); itB != builtinsProps.end()) {
-        if (idx < itB->second.size())
-            return PropKey{BUILTIN_MODULE_ID, idx, tid};
-        idx -= itB->second.size();
-    }
-    return {NO_MODULE, idx, tid};
+    return methodIndex_[tid][itD->second(rng)];
 }
 
 ObjectKind FuzzingAST::BuiltinContext::pickValueKind() {

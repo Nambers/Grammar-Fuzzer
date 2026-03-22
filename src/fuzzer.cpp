@@ -239,6 +239,7 @@ void FuzzingAST::fuzzerDriver() {
         }
     }
     corpusSize = scheduler.corpus.size();
+    scheduler.ctx.initFromBuiltins();
     scheduler.ctx.updateVars(scheduler.corpus[scheduler.idx].ast);
     newEdgeCnt = 0; // reset edge count
     cacheCorpus.reserve(MAX_CACHE_SIZE);

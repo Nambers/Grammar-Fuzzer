@@ -30,6 +30,7 @@ constexpr TypeID OBJECT_TYPE = 0;
 constexpr size_t SCOPE_MAX_TYPE = 200;
 constexpr size_t MAX_SCOPE_CNT = 20;
 constexpr size_t MAX_GEN_HISTORY = 100;
+constexpr size_t REROLL_ATTEMPTS = 100;
 
 constexpr uint32_t RUNLINES_TIMEOUT_MS = 1000;
 constexpr uint32_t RUNLINE_TIMEOUT_MS = 500;
@@ -204,6 +205,7 @@ class BuiltinContext {
         9, 1, 6}; // 9:1:6 non-const, const and function result
                   // --- variable provider ---
   public:
+    void initFromBuiltins();
     // Build index for all scopes, merging parent scope and initializing
     // distributions
     void updateVars(const AST &ast);
@@ -232,13 +234,17 @@ class BuiltinContext {
     std::vector<std::vector<TypeID>> typeList_;
     std::vector<std::uniform_int_distribution<size_t>> typeDist_;
 
+    // [scopeID]
     std::vector<ScopeProvider> scopeProviders;
+    // Cached builtins index injected into global scope each update.
+    ScopeProvider builtinsScopeCache;
 
     std::bernoulli_distribution respectType_dist{
         0.8}; // 80% respect type, 20% not respect type
 
     std::unordered_map<TypeID, std::uniform_int_distribution<size_t>>
         methodDist_;
+    std::unordered_map<TypeID, std::vector<PropKey>> methodIndex_;
 };
 
 class ASTNodeValue {

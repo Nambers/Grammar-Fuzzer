@@ -226,7 +226,9 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                     if (!inheritName.empty())
                         cls.fields.push_back({inheritName});
                 }
-                if (inheritType == -1) {
+                // QuickJS has a builtin type named "undefined" which is not a
+                // valid class base in `class A extends ...`.
+                if (inheritType == -1 || inheritName == "undefined") {
                     // no need plain class
                     state = MutationState::STATE_REROLL;
                     break;

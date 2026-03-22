@@ -94,7 +94,8 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
     const auto globalPropsSizeBefore = globalProps.size();
     const auto nameCntBefore = ast.ast.nameCnt;
 
-    while (state == MutationState::STATE_REROLL && ++attempts < 500) {
+    while (state == MutationState::STATE_REROLL &&
+           ++attempts < REROLL_ATTEMPTS) {
         if (attempts > 1) {
             // Hard rollback for symbol table side effects introduced during a
             // failed attempt (fresh variable names, var indices, classProps).
@@ -102,6 +103,10 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             scopeVars.resize(scopeVarsSizeBefore);
             globalProps.resize(globalPropsSizeBefore);
             ast.ast.nameCnt = nameCntBefore;
+            // Keep provider indexes/distributions consistent with rolled-back
+            // AST state; otherwise stale PropKey.idx can go out of bounds in
+            // unfoldKey().
+            ctx.updateVars(ast.ast);
         }
 
         state = MutationState::STATE_OK;
@@ -557,7 +562,14 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                   static_cast<int>(pick));
         }
     }
-    if (attempts >= 500) {
+    if (state != MutationState::STATE_OK) {
+        // Final failed attempt can still leave side effects in symbol tables.
+        // Restore the pre-call snapshot and resync provider caches.
+        ast.ast.variables.resize(varsSizeBefore);
+        scopeVars.resize(scopeVarsSizeBefore);
+        globalProps.resize(globalPropsSizeBefore);
+        ast.ast.nameCnt = nameCntBefore;
+        ctx.updateVars(ast.ast);
         return 1;
     }
     return 0;
