@@ -65,9 +65,6 @@ int main(int argc, char *argv[]) {
     in >> j;
 
     AST ast = j.get<AST>();
-    BuiltinContext ctx;
-    loadBuiltinsFuncs(ctx);
-    initPrimitiveTypes(ctx);
     std::string result;
     if (argc == 2 && std::string(argv[1]) == "-d") {
         // only run declarations
@@ -76,14 +73,14 @@ int main(int argc, char *argv[]) {
             const auto &node = ast.declarations[decl];
             if (node.kind != ASTNodeKind::Function) {
                 std::ostringstream script;
-                nodeToPython(script, node, ast, ctx, 0);
+                nodeToPython(script, node, ast, 0);
                 std::cout << script.str();
                 result += script.str();
             }
         }
     } else {
         std::ostringstream script;
-        scopeToPython(script, 0, ast, ctx, 0);
+        scopeToPython(script, 0, ast, 0);
         std::cout << "Generated Python script:\n" << script.str() << "\n";
         result = script.str();
     }

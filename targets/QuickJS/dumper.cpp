@@ -15,8 +15,7 @@ static const char *mapUnaryOp(const std::string &op) {
 }
 
 static void valueToJS(std::ostringstream &out, const ASTNodeValue &val,
-                      const AST & /*ast*/, const BuiltinContext & /*ctx*/,
-                      int /*indentLevel*/) {
+                      const AST & /*ast*/, int /*indentLevel*/) {
     if (std::holds_alternative<std::string>(val.val)) {
         const auto &s = std::get<std::string>(val.val);
         if (s == "None()" || s == "nil()")
@@ -45,8 +44,7 @@ static void valueToJS(std::ostringstream &out, const ASTNodeValue &val,
 }
 
 void FuzzingAST::nodeToJS(std::ostringstream &out, const ASTNode &node,
-                          const AST &ast, const BuiltinContext &ctx,
-                          int indentLevel) {
+                          const AST &ast, int indentLevel) {
     const std::string ind(indentLevel * 4, ' ');
     out << ind;
 
@@ -54,61 +52,61 @@ void FuzzingAST::nodeToJS(std::ostringstream &out, const ASTNode &node,
     case ASTNodeKind::DeclareVar: {
         const std::string &name = std::get<std::string>(node.fields[0].val);
         out << "let " << name << " = ";
-        valueToJS(out, node.fields[1], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[1], ast, indentLevel);
         out << ";";
         break;
     }
 
     case ASTNodeKind::Return:
         out << "return ";
-        valueToJS(out, node.fields[0], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[0], ast, indentLevel);
         out << ";";
         break;
 
     case ASTNodeKind::GetProp:
         [[fallthrough]];
     case ASTNodeKind::SetProp:
-        valueToJS(out, node.fields[0], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[0], ast, indentLevel);
         out << " = ";
-        valueToJS(out, node.fields[1], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[1], ast, indentLevel);
         out << ";";
         break;
 
     case ASTNodeKind::Call: {
         if (!std::get<std::string>(node.fields[0].val).empty()) {
-            valueToJS(out, node.fields[0], ast, ctx, indentLevel);
+            valueToJS(out, node.fields[0], ast, indentLevel);
             out << " = ";
         }
-        valueToJS(out, node.fields[1], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[1], ast, indentLevel);
         out << "(";
         for (size_t i = 2; i < node.fields.size(); ++i) {
             if (i > 2)
                 out << ", ";
-            valueToJS(out, node.fields[i], ast, ctx, indentLevel);
+            valueToJS(out, node.fields[i], ast, indentLevel);
         }
         out << ");";
         break;
     }
 
     case ASTNodeKind::BinaryOp: {
-        valueToJS(out, node.fields[0], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[0], ast, indentLevel);
         out << " = ";
-        valueToJS(out, node.fields[1], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[1], ast, indentLevel);
         const char *op = mapBinaryOp(std::get<std::string>(node.fields[2].val));
         out << ' ' << op << ' ';
-        valueToJS(out, node.fields[3], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[3], ast, indentLevel);
         out << ";";
         break;
     }
 
     case ASTNodeKind::UnaryOp: {
-        valueToJS(out, node.fields[0], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[0], ast, indentLevel);
         out << " = ";
         const char *op = mapUnaryOp(std::get<std::string>(node.fields[1].val));
         out << op;
         if (std::string(op) != "~" && std::string(op) != "-")
             out << " ";
-        valueToJS(out, node.fields[2], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[2], ast, indentLevel);
         out << ";";
         break;
     }
@@ -126,7 +124,7 @@ void FuzzingAST::nodeToJS(std::ostringstream &out, const ASTNode &node,
         }
         out << ") {\n";
 
-        scopeToJS(out, node.scope, ast, ctx, indentLevel + 1);
+        scopeToJS(out, node.scope, ast, indentLevel + 1);
 
         out << ind << "}";
         break;
@@ -176,7 +174,7 @@ void FuzzingAST::nodeToJS(std::ostringstream &out, const ASTNode &node,
                 out << std::get<std::string>(fn.fields[2 + p * 2].val);
             }
             out << ") {\n";
-            scopeToJS(out, fn.scope, ast, ctx, indentLevel + 2);
+            scopeToJS(out, fn.scope, ast, indentLevel + 2);
             out << ind << "    }\n";
         }
 
@@ -200,20 +198,20 @@ void FuzzingAST::nodeToJS(std::ostringstream &out, const ASTNode &node,
     }
 
     case ASTNodeKind::SetItem:
-        valueToJS(out, node.fields[0], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[0], ast, indentLevel);
         out << "[";
-        valueToJS(out, node.fields[1], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[1], ast, indentLevel);
         out << "] = ";
-        valueToJS(out, node.fields[2], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[2], ast, indentLevel);
         out << ";";
         break;
 
     case ASTNodeKind::GetItem:
-        valueToJS(out, node.fields[0], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[0], ast, indentLevel);
         out << " = ";
-        valueToJS(out, node.fields[1], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[1], ast, indentLevel);
         out << "[";
-        valueToJS(out, node.fields[2], ast, ctx, indentLevel);
+        valueToJS(out, node.fields[2], ast, indentLevel);
         out << "];";
         break;
 
@@ -229,8 +227,7 @@ void FuzzingAST::nodeToJS(std::ostringstream &out, const ASTNode &node,
     out << '\n';
 }
 
-void FuzzingAST::scopeToJS(std::ostringstream &out, ScopeID sid,
-                           const AST &ast, const BuiltinContext &ctx,
+void FuzzingAST::scopeToJS(std::ostringstream &out, ScopeID sid, const AST &ast,
                            int indentLevel) {
     if (sid == EMPTY_SCOPE)
         return;
@@ -239,26 +236,26 @@ void FuzzingAST::scopeToJS(std::ostringstream &out, ScopeID sid,
     bool empty = true;
 
     if (scope.globalRefID != -1) {
-        nodeToJS(out, ast.declarations[scope.globalRefID], ast, ctx, indentLevel);
+        nodeToJS(out, ast.declarations[scope.globalRefID], ast, indentLevel);
         empty = false;
     }
 
     for (NodeID id : scope.declarations) {
         const auto &decl = ast.declarations[id];
         if (decl.kind != ASTNodeKind::Function) {
-            nodeToJS(out, decl, ast, ctx, indentLevel);
+            nodeToJS(out, decl, ast, indentLevel);
             empty = false;
         }
     }
 
     for (NodeID id : scope.expressions) {
-        nodeToJS(out, ast.expressions[id], ast, ctx, indentLevel);
+        nodeToJS(out, ast.expressions[id], ast, indentLevel);
         empty = false;
     }
 
     if (scope.retNodeID != -1) {
         const auto &retNode = ast.expressions[scope.retNodeID];
-        nodeToJS(out, retNode, ast, ctx, indentLevel);
+        nodeToJS(out, retNode, ast, indentLevel);
         empty = false;
     }
 

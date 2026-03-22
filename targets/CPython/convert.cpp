@@ -22,9 +22,6 @@ PANIC(std::format_string<Args...> fmt, Args &&...args) {
 
 int main(int argc, char *argv[]) {
     Py_Initialize();
-    BuiltinContext ctx;
-    loadBuiltinsFuncs(ctx);
-    initPrimitiveTypes(ctx);
     // given path in arg, transform all .json into .py
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <path_to_json_files>\n";
@@ -44,7 +41,7 @@ int main(int argc, char *argv[]) {
             AST ast = j.get<AST>();
 
             std::ostringstream script;
-            scopeToPython(script, 0, ast, ctx, 0);
+            scopeToPython(script, 0, ast, 0);
 
             auto path = entry.path(); // Create a non-const copy of the path
             std::ofstream out(path.replace_extension(".py"));

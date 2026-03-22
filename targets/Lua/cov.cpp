@@ -2,20 +2,19 @@
 #include "driver.hpp"
 #include "dumper.hpp"
 #include "serialization.hpp"
-#include <lua.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <lua.hpp>
 #include <string>
 
 using namespace FuzzingAST;
 namespace fs = std::filesystem;
 
-static BuiltinContext ctx;
 static const fs::path queueDir = "corpus/queue";
-static const fs::path doneDir  = "corpus/done";
+static const fs::path doneDir = "corpus/done";
 
-inline constexpr const char *RED   = "\033[0;31m";
+inline constexpr const char *RED = "\033[0;31m";
 inline constexpr const char *RESET = "\033[0m";
 
 template <typename... Args>
@@ -58,7 +57,7 @@ static void collect() {
             AST ast = jsonData.get<AST>();
 
             std::ostringstream script;
-            scopeToLua(script, 0, ast, ctx, 0);
+            scopeToLua(script, 0, ast, 0);
 
             lua_State *L = luaL_newstate();
             luaL_openlibs(L);
@@ -76,9 +75,6 @@ static void collect() {
 int main() {
     if (!fs::exists(doneDir))
         fs::create_directories(doneDir);
-
-    loadBuiltinsFuncs(ctx);
-    initPrimitiveTypes(ctx);
 
     std::cout << "[cov] Starting Lua coverage runner...\n";
     collect();

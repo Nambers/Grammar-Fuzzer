@@ -8,8 +8,7 @@ using namespace FuzzingAST;
 #endif
 
 namespace {
-template <typename T>
-inline bool isValidID(int id, const std::vector<T> &v) {
+template <typename T> inline bool isValidID(int id, const std::vector<T> &v) {
 #if FUZZ_ENABLE_DUMPER_VALIDATION
     return id >= 0 && static_cast<size_t>(id) < v.size();
 #else
@@ -21,7 +20,7 @@ inline bool isValidID(int id, const std::vector<T> &v) {
 } // namespace
 
 void valueToPython(std::ostringstream &out, const ASTNodeValue &val,
-                   const AST &ast, const BuiltinContext &ctx, int indentLevel) {
+                   const AST &ast, int indentLevel) {
     if (std::holds_alternative<std::string>(val.val)) {
         out << std::get<std::string>(val.val);
     } else if (std::holds_alternative<int64_t>(val.val)) {
@@ -36,8 +35,7 @@ void valueToPython(std::ostringstream &out, const ASTNodeValue &val,
 }
 
 void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
-                              const AST &ast, const BuiltinContext &ctx,
-                              int indentLevel) {
+                              const AST &ast, int indentLevel) {
     const std::string ind(indentLevel * 4, ' ');
     out << ind;
 
@@ -45,8 +43,7 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
 #if FUZZ_ENABLE_DUMPER_VALIDATION
         if (node.fields.size() < n) {
             out << "# malformed node: kind " << static_cast<int>(node.kind)
-                << " expects >= " << n << " fields, got "
-                << node.fields.size();
+                << " expects >= " << n << " fields, got " << node.fields.size();
             return false;
         }
 #else
@@ -59,14 +56,11 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
     case ASTNodeKind::DeclareVar: {
         if (!requireFields(2))
             break;
-        // name [: type] = value
+        // name = value
         const std::string &name = std::get<std::string>(node.fields[0].val);
         out << name;
-        // no annotation bc will conflict with global
-        // if (node.type != -1)
-        //     out << ": " << getTypeName(node.type, ast, ctx);
         out << " = ";
-        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[1], ast, indentLevel);
         break;
     }
 
@@ -74,30 +68,30 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
         if (!requireFields(1))
             break;
         out << "return ";
-        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[0], ast, indentLevel);
         break;
     case ASTNodeKind::GetProp:
         [[fallthrough]];
     case ASTNodeKind::SetProp:
         if (!requireFields(2))
             break;
-        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[0], ast, indentLevel);
         out << " = ";
-        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[1], ast, indentLevel);
         break;
     case ASTNodeKind::Call:
         if (!requireFields(2))
             break;
         if (!std::get<std::string>(node.fields[0].val).empty()) {
-            valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+            valueToPython(out, node.fields[0], ast, indentLevel);
             out << " = ";
         }
-        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[1], ast, indentLevel);
         out << "(";
         for (size_t i = 2; i < node.fields.size(); ++i) {
             if (i > 2)
                 out << ", ";
-            valueToPython(out, node.fields[i], ast, ctx, indentLevel);
+            valueToPython(out, node.fields[i], ast, indentLevel);
         }
         out << ")";
         break;
@@ -105,41 +99,41 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
     case ASTNodeKind::BinaryOp:
         if (!requireFields(4))
             break;
-        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[0], ast, indentLevel);
         out << " = ";
-        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[1], ast, indentLevel);
         out << ' ' << std::get<std::string>(node.fields[2].val) << ' ';
-        valueToPython(out, node.fields[3], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[3], ast, indentLevel);
         break;
 
     case ASTNodeKind::UnaryOp:
         if (!requireFields(3))
             break;
-        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[0], ast, indentLevel);
         out << " = " << std::get<std::string>(node.fields[1].val) << ' ';
-        valueToPython(out, node.fields[2], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[2], ast, indentLevel);
         break;
 
     case ASTNodeKind::SetItem:
         if (!requireFields(3))
             break;
         // container[index] = value
-        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[0], ast, indentLevel);
         out << "[";
-        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[1], ast, indentLevel);
         out << "] = ";
-        valueToPython(out, node.fields[2], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[2], ast, indentLevel);
         break;
 
     case ASTNodeKind::GetItem:
         if (!requireFields(3))
             break;
         // result = container[index]
-        valueToPython(out, node.fields[0], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[0], ast, indentLevel);
         out << " = ";
-        valueToPython(out, node.fields[1], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[1], ast, indentLevel);
         out << "[";
-        valueToPython(out, node.fields[2], ast, ctx, indentLevel);
+        valueToPython(out, node.fields[2], ast, indentLevel);
         out << "]";
         break;
 
@@ -157,17 +151,17 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
             std::string argName = std::get<std::string>(node.fields[2 + i].val);
             TypeID pt = static_cast<TypeID>(
                 std::get<int64_t>(node.fields[2 + i + 1].val));
-            out << argName << ": " << getTypeName(pt, ast, ctx);
+            out << argName;
         }
         out << ")";
 
         TypeID retType = std::get<int64_t>(node.fields[1].val);
-        out << " -> " << getTypeName(retType, ast, ctx) << ":\n";
+        out << ":\n";
         if (node.scope != EMPTY_SCOPE && !isValidID(node.scope, ast.scopes)) {
             out << std::string((indentLevel + 1) * 4, ' ')
                 << "# invalid function scope " << node.scope << '\n';
         } else {
-            scopeToPython(out, node.scope, ast, ctx, indentLevel + 1);
+            scopeToPython(out, node.scope, ast, indentLevel + 1);
         }
         break;
     }
@@ -208,7 +202,7 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
                     << "# invalid class member function id " << fnID << '\n';
                 continue;
             }
-            nodeToPython(out, ast.declarations[fnID], ast, ctx, indentLevel + 1);
+            nodeToPython(out, ast.declarations[fnID], ast, indentLevel + 1);
             bodyEmpty = false;
         }
         if (bodyEmpty)
@@ -243,8 +237,7 @@ void FuzzingAST::nodeToPython(std::ostringstream &out, const ASTNode &node,
 }
 
 void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
-                               const AST &ast, const BuiltinContext &ctx,
-                               int indentLevel) {
+                               const AST &ast, int indentLevel) {
     if (sid == EMPTY_SCOPE)
         return;
     if (!isValidID(sid, ast.scopes)) {
@@ -256,8 +249,9 @@ void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
     const ASTScope &scope = ast.scopes[sid];
     bool empty = true;
 
-    if (scope.globalRefID != -1 && isValidID(scope.globalRefID, ast.declarations)) {
-        nodeToPython(out, ast.declarations[scope.globalRefID], ast, ctx,
+    if (scope.globalRefID != -1 &&
+        isValidID(scope.globalRefID, ast.declarations)) {
+        nodeToPython(out, ast.declarations[scope.globalRefID], ast,
                      indentLevel);
         empty = false;
     } else if (scope.globalRefID != -1) {
@@ -273,7 +267,7 @@ void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
         const auto &decl = ast.declarations[id];
         // all function are under class, which will be rendered in class handler
         if (decl.kind != ASTNodeKind::Function) {
-            nodeToPython(out, ast.declarations[id], ast, ctx, indentLevel);
+            nodeToPython(out, ast.declarations[id], ast, indentLevel);
             empty = false;
         }
     }
@@ -283,13 +277,13 @@ void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
                 << "# invalid expression id " << id << '\n';
             continue;
         }
-        nodeToPython(out, ast.expressions[id], ast, ctx, indentLevel);
+        nodeToPython(out, ast.expressions[id], ast, indentLevel);
         empty = false;
     }
     // return at the end
     if (scope.retNodeID != -1 && isValidID(scope.retNodeID, ast.expressions)) {
         const auto &retNode = ast.expressions[scope.retNodeID];
-        nodeToPython(out, retNode, ast, ctx, indentLevel);
+        nodeToPython(out, retNode, ast, indentLevel);
         empty = false;
     } else if (scope.retNodeID != -1) {
         out << std::string(indentLevel * 4, ' ') << "# invalid retNodeID "

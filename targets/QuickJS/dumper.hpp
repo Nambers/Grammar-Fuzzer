@@ -6,9 +6,9 @@
 
 namespace FuzzingAST {
 void nodeToJS(std::ostringstream &out, const ASTNode &node, const AST &ast,
-              const BuiltinContext &ctx, int indentLevel);
+              int indentLevel);
 void scopeToJS(std::ostringstream &out, ScopeID sid, const AST &ast,
-               const BuiltinContext &ctx, int indentLevel);
+               int indentLevel);
 } // namespace FuzzingAST
 
 #endif // QUICKJS_DUMPER_HPP

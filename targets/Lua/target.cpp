@@ -296,6 +296,9 @@ static void errorCallback(const std::string &errMsg, AST &ast,
                         for (auto it = props.begin(); it != props.end(); ++it) {
                             if (it->name == methodName && it->isCallable) {
                                 props.erase(it);
+                                if (tid <
+                                    static_cast<TypeID>(ctx.builtinTypesCnt))
+                                    ctx.initFromBuiltins();
                                 return true;
                             }
                         }
@@ -319,8 +322,10 @@ static void errorCallback(const std::string &errMsg, AST &ast,
             // The type shouldn't have properties — remove all props
             TypeID badTid = resolveType(m[1], ctx, ast, 0);
             if (badTid > 0 && badTid != resolveType("table", ctx, ast, 0)) {
-                if (ctx.builtinsProps.contains(badTid))
+                if (ctx.builtinsProps.contains(badTid)) {
                     ctx.builtinsProps.erase(badTid);
+                    ctx.initFromBuiltins();
+                }
                 if (ast.classProps.contains(badTid))
                     ast.classProps.erase(badTid);
             }
@@ -394,7 +399,7 @@ Exe_Result FuzzingAST::runLine(const ASTNode &node, AST &ast,
                                std::unique_ptr<ExecutionContext> &excCtx,
                                bool echo) {
     std::ostringstream script;
-    nodeToLua(script, node, ast, ctx, 0);
+    nodeToLua(script, node, ast, 0);
     auto *L = reinterpret_cast<lua_State *>(excCtx->getContext());
     auto ret = runLuaStr(L, script.str(), ast, ctx, echo, std::move(node));
     if (ret == Exe_Result::TIMEOUT)
@@ -410,10 +415,10 @@ Exe_Result FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
     for (auto nodeID : ast.scopes[0].declarations) {
         const auto &node = ast.declarations[nodeID];
         if (node.kind != ASTNodeKind::Function)
-            nodeToLua(script, node, ast, ctx, 0);
+            nodeToLua(script, node, ast, 0);
     }
     for (const auto &node : nodes)
-        nodeToLua(script, node, ast, ctx, 0);
+        nodeToLua(script, node, ast, 0);
 
     auto *L = reinterpret_cast<lua_State *>(excCtx->getContext());
     auto ret = runLuaStr(L, script.str(), ast, ctx, echo, std::nullopt,
@@ -427,7 +432,7 @@ Exe_Result FuzzingAST::runAST(AST &ast, BuiltinContext &ctx,
                               std::unique_ptr<ExecutionContext> &excCtx,
                               bool echo) {
     std::ostringstream script;
-    scopeToLua(script, 0, ast, ctx, 0);
+    scopeToLua(script, 0, ast, 0);
     auto *L = reinterpret_cast<lua_State *>(excCtx->getContext());
     auto ret = runLuaStr(L, script.str(), ast, ctx, echo);
     if (ret == Exe_Result::TIMEOUT)
@@ -442,7 +447,7 @@ Exe_Result FuzzingAST::reflectObject(AST &ast, ASTScope &scope,
     for (NodeID id : scope.declarations) {
         const auto &node = ast.declarations[id];
         if (node.kind != ASTNodeKind::Function)
-            nodeToLua(script, node, ast, ctx, 0);
+            nodeToLua(script, node, ast, 0);
     }
     std::string code = script.str();
     if (code.empty())

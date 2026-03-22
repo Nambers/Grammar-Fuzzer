@@ -351,6 +351,7 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                     if (it != props.end()) {
                         // remove the property
                         props.erase(it);
+                        if(tid < ctx.builtinTypesCnt) ctx.initFromBuiltins();
                         INFO("Removed property '{}' from typeID {}", attrName,
                              tid);
                         handled = true;
@@ -624,7 +625,7 @@ Exe_Result FuzzingAST::runLine(const ASTNode &node, AST &ast,
                                std::unique_ptr<ExecutionContext> &excCtx,
                                bool echo) {
     std::ostringstream script;
-    nodeToPython(script, node, ast, ctx, 0);
+    nodeToPython(script, node, ast, 0);
     const auto ret = runASTStr(
         script.str(), ast, ctx,
         reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo);
@@ -643,11 +644,11 @@ Exe_Result FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
     for (auto nodeID : ast.scopes[0].declarations) {
         const auto &node = ast.declarations[nodeID];
         if (node.kind != ASTNodeKind::Function) {
-            nodeToPython(script, node, ast, ctx, 0);
+            nodeToPython(script, node, ast, 0);
         }
     }
     for (const auto &node : nodes) {
-        nodeToPython(script, node, ast, ctx, 0);
+        nodeToPython(script, node, ast, 0);
     }
     const auto ret =
         runASTStr(script.str(), ast, ctx,
@@ -664,7 +665,7 @@ Exe_Result FuzzingAST::runAST(AST &ast, BuiltinContext &ctx,
                               std::unique_ptr<ExecutionContext> &excCtx,
                               bool echo) {
     std::ostringstream script;
-    scopeToPython(script, 0, ast, ctx, 0);
+    scopeToPython(script, 0, ast, 0);
     const auto ret = runASTStr(
         script.str(), ast, ctx,
         reinterpret_cast<PyObject *>(excCtx.get()->getContext()), echo);
@@ -682,7 +683,7 @@ Exe_Result FuzzingAST::reflectObject(AST &ast, ASTScope &scope,
     for (NodeID id : scope.declarations) {
         const auto &node = ast.declarations[id];
         if (node.kind != ASTNodeKind::Function)
-            nodeToPython(script, ast.declarations[id], ast, ctx, 0);
+            nodeToPython(script, ast.declarations[id], ast, 0);
     }
 
     std::string re = script.str();

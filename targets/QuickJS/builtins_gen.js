@@ -125,7 +125,7 @@ function inferReturnTypeByProbe(fn, thisArg, argc, preferredTypes = []) {
 		try {
 			const ret = fn.apply(thisArg, mkArgs(tid, argc));
 			if (ret && typeof ret.then === 'function' && typeof ret.catch === 'function') {
-				ret.catch(() => {});
+				ret.catch(() => { });
 			}
 			return typeIdFromValue(ret);
 		} catch {
@@ -212,6 +212,9 @@ function collectPrototypeBucket(typeId, protoObj, receiverFactory, preferredPara
 collectPrototypeBucket(T.number, Number.prototype, () => 1, T.number);
 collectPrototypeBucket(T.string, String.prototype, () => 'x', T.string);
 collectPrototypeBucket(T.array, Array.prototype, () => [1, 2, 3], T.object);
+collectPrototypeBucket(T.boolean, Boolean.prototype, () => true, T.boolean);
+collectPrototypeBucket(T.object, Object.prototype, () => ({ a: 1 }), T.object);
+collectPrototypeBucket(T.function, Function.prototype, () => function () { return 0; }, T.object);
 
 // ---------- modules ----------
 // Module IDs must match mutation logic: distLib index + 1.

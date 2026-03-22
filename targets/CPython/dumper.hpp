@@ -6,9 +6,9 @@
 
 namespace FuzzingAST {
 void nodeToPython(std::ostringstream &out, const ASTNode &node, const AST &ast,
-                  const BuiltinContext &ctx, int indentLevel);
+                  int indentLevel);
 void scopeToPython(std::ostringstream &out, ScopeID sid, const AST &ast,
-                   const BuiltinContext &ctx, int indentLevel);
+                   int indentLevel);
 } // namespace FuzzingAST
 
 #endif

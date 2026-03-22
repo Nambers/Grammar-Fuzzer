@@ -2,15 +2,15 @@
 #include "driver.hpp"
 #include "dumper.hpp"
 #include "serialization.hpp"
-#include <lua.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <lua.hpp>
 
 using json = nlohmann::json;
 using namespace FuzzingAST;
 
-inline constexpr const char *RED   = "\033[0;31m";
+inline constexpr const char *RED = "\033[0;31m";
 inline constexpr const char *RESET = "\033[0m";
 
 template <typename... Args>
@@ -22,10 +22,6 @@ PANIC(std::format_string<Args...> fmt, Args &&...args) {
 }
 
 int main(int argc, char *argv[]) {
-    BuiltinContext ctx;
-    loadBuiltinsFuncs(ctx);
-    initPrimitiveTypes(ctx);
-
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <path_to_json_files>\n";
         return 1;
@@ -43,7 +39,7 @@ int main(int argc, char *argv[]) {
             AST ast = j.get<AST>();
 
             std::ostringstream script;
-            scopeToLua(script, 0, ast, ctx, 0);
+            scopeToLua(script, 0, ast, 0);
 
             auto p = entry.path();
             std::ofstream out(p.replace_extension(".lua"));

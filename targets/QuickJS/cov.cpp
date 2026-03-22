@@ -14,7 +14,6 @@ extern "C" {
 using namespace FuzzingAST;
 namespace fs = std::filesystem;
 
-static BuiltinContext ctx;
 static const fs::path queueDir = "corpus/queue";
 static const fs::path doneDir = "corpus/done";
 
@@ -54,7 +53,7 @@ static void collect() {
             AST ast = jsonData.get<AST>();
 
             std::ostringstream script;
-            scopeToJS(script, 0, ast, ctx, 0);
+            scopeToJS(script, 0, ast, 0);
 
             runJSStr(jctx, script.str());
             fs::rename(filePath, doneDir / filename);
@@ -71,9 +70,6 @@ static void collect() {
 int main() {
     if (!fs::exists(doneDir))
         fs::create_directories(doneDir);
-
-    loadBuiltinsFuncs(ctx);
-    initPrimitiveTypes(ctx);
 
     std::cout << "[cov] Starting QuickJS coverage runner...\n";
     collect();

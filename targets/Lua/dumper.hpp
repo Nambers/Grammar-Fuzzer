@@ -6,9 +6,9 @@
 
 namespace FuzzingAST {
 void nodeToLua(std::ostringstream &out, const ASTNode &node, const AST &ast,
-               const BuiltinContext &ctx, int indentLevel);
+               int indentLevel);
 void scopeToLua(std::ostringstream &out, ScopeID sid, const AST &ast,
-                const BuiltinContext &ctx, int indentLevel);
+                int indentLevel);
 } // namespace FuzzingAST
 
 #endif // LUA_DUMPER_HPP

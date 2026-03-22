@@ -131,7 +131,8 @@ void FuzzingAST::dummyAST(ASTData &data, const BuiltinContext &ctx) {
         ASTNode{ASTNodeKind::DeclareVar, {{"num_a"}, {int64_t(0)}}};
     data.ast.declarations[3] =
         ASTNode{ASTNodeKind::DeclareVar, {{"num_b"}, {int64_t(42)}}};
-    data.ast.declarations[4] = ASTNode{ASTNodeKind::DeclareVar, {{"num_c"}, {3.14}}};
+    data.ast.declarations[4] =
+        ASTNode{ASTNodeKind::DeclareVar, {{"num_c"}, {3.14}}};
     data.ast.declarations[5] =
         ASTNode{ASTNodeKind::DeclareVar, {{"bool_a"}, {true}}};
     data.ast.declarations[6] =
@@ -178,8 +179,8 @@ static Exe_Result runJSStr(JSContext *ctx, const std::string &code, AST &ast,
 
     if (sigsetjmp(timeoutJmp, 1) == 0) {
         set_timeout_ms(timeoutMs);
-        JSValue result =
-            JS_Eval(ctx, code.c_str(), code.size(), "<fuzz>", JS_EVAL_TYPE_GLOBAL);
+        JSValue result = JS_Eval(ctx, code.c_str(), code.size(), "<fuzz>",
+                                 JS_EVAL_TYPE_GLOBAL);
         clear_timeout();
 
         if (JS_IsException(result)) {
@@ -210,7 +211,7 @@ Exe_Result FuzzingAST::runLine(const ASTNode &node, AST &ast,
                                std::unique_ptr<ExecutionContext> &excCtx,
                                bool echo) {
     std::ostringstream script;
-    nodeToJS(script, node, ast, ctx, 0);
+    nodeToJS(script, node, ast, 0);
 
     auto *h = reinterpret_cast<QuickJSHandle *>(excCtx->getContext());
     auto ret = runJSStr(h->ctx, script.str(), ast, ctx, echo, std::move(node));
@@ -227,10 +228,10 @@ Exe_Result FuzzingAST::runLines(const std::vector<ASTNode> &nodes, AST &ast,
     for (auto nodeID : ast.scopes[0].declarations) {
         const auto &node = ast.declarations[nodeID];
         if (node.kind != ASTNodeKind::Function)
-            nodeToJS(script, node, ast, ctx, 0);
+            nodeToJS(script, node, ast, 0);
     }
     for (const auto &node : nodes)
-        nodeToJS(script, node, ast, ctx, 0);
+        nodeToJS(script, node, ast, 0);
 
     auto *h = reinterpret_cast<QuickJSHandle *>(excCtx->getContext());
     auto ret = runJSStr(h->ctx, script.str(), ast, ctx, echo, std::nullopt,
@@ -244,7 +245,7 @@ Exe_Result FuzzingAST::runAST(AST &ast, BuiltinContext &ctx,
                               std::unique_ptr<ExecutionContext> &excCtx,
                               bool echo) {
     std::ostringstream script;
-    scopeToJS(script, 0, ast, ctx, 0);
+    scopeToJS(script, 0, ast, 0);
 
     auto *h = reinterpret_cast<QuickJSHandle *>(excCtx->getContext());
     auto ret = runJSStr(h->ctx, script.str(), ast, ctx, echo);
@@ -254,12 +255,13 @@ Exe_Result FuzzingAST::runAST(AST &ast, BuiltinContext &ctx,
 }
 
 Exe_Result FuzzingAST::reflectObject(AST &ast, ASTScope &scope,
-                                     const ScopeID /*sid*/, BuiltinContext &ctx) {
+                                     const ScopeID /*sid*/,
+                                     BuiltinContext &ctx) {
     std::ostringstream script;
     for (NodeID id : scope.declarations) {
         const auto &node = ast.declarations[id];
         if (node.kind != ASTNodeKind::Function)
-            nodeToJS(script, node, ast, ctx, 0);
+            nodeToJS(script, node, ast, 0);
     }
     std::string code = script.str();
     if (code.empty())
@@ -269,8 +271,8 @@ Exe_Result FuzzingAST::reflectObject(AST &ast, ASTScope &scope,
     if (!h)
         return Exe_Result::ERR;
 
-    JSValue result =
-        JS_Eval(h->ctx, code.c_str(), code.size(), "<reflect>", JS_EVAL_TYPE_GLOBAL);
+    JSValue result = JS_Eval(h->ctx, code.c_str(), code.size(), "<reflect>",
+                             JS_EVAL_TYPE_GLOBAL);
     if (JS_IsException(result)) {
         JS_FreeValue(h->ctx, result);
         if (h->ctx)

@@ -17,7 +17,6 @@ using namespace FuzzingAST;
 
 namespace fs = std::filesystem;
 static std::atomic<bool> shouldExit = false;
-static BuiltinContext ctx;
 static const fs::path queueDir = "corpus/queue";
 static const fs::path doneDir = "corpus/done";
 
@@ -69,13 +68,14 @@ static void collect() {
         try {
             std::string content = readFile(filePath);
             if (content.empty()) {
-                std::cerr << "[cov] file " << filePath << " is empty, skipped." << std::endl;
+                std::cerr << "[cov] file " << filePath << " is empty, skipped."
+                          << std::endl;
                 continue;
             }
             nlohmann::json jsonData = nlohmann::json::parse(content);
             AST ast = jsonData.get<AST>();
             std::ostringstream astStream;
-            scopeToPython(astStream, 0, ast, ctx, 0);
+            scopeToPython(astStream, 0, ast, 0);
             // std::cout << "[cov] Running on: " << filename << "\n";
 
             runASTStr(astStream.str());
@@ -95,9 +95,6 @@ int main() {
     if (!fs::exists(doneDir)) {
         fs::create_directories(doneDir);
     }
-
-    loadBuiltinsFuncs(ctx);
-    initPrimitiveTypes(ctx);
 
     std::cout << "[cov] Starting coverage runner...\n";
     collect();

@@ -11,8 +11,6 @@ using namespace FuzzingAST;
 
 int main(int argc, char *argv[]) {
     BuiltinContext ctx;
-    loadBuiltinsFuncs(ctx);
-    initPrimitiveTypes(ctx);
 
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <path_to_json_files>\n";
@@ -31,7 +29,7 @@ int main(int argc, char *argv[]) {
             AST ast = j.get<AST>();
 
             std::ostringstream script;
-            scopeToJS(script, 0, ast, ctx, 0);
+            scopeToJS(script, 0, ast, 0);
 
             auto p = entry.path();
             std::ofstream out(p.replace_extension(".js"));

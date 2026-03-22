@@ -20,8 +20,8 @@ static void runJSStr(const std::string &code) {
     struct timeval start{};
     gettimeofday(&start, nullptr);
 
-    JSValue ret = JS_Eval(ctx, code.c_str(), code.size(), "<test>",
-                          JS_EVAL_TYPE_GLOBAL);
+    JSValue ret =
+        JS_Eval(ctx, code.c_str(), code.size(), "<test>", JS_EVAL_TYPE_GLOBAL);
 
     struct timeval now{};
     gettimeofday(&now, nullptr);
@@ -53,9 +53,6 @@ int main(int argc, char *argv[]) {
     in >> j;
 
     AST ast = j.get<AST>();
-    BuiltinContext ctx;
-    loadBuiltinsFuncs(ctx);
-    initPrimitiveTypes(ctx);
 
     std::string result;
     if (argc == 2 && std::string(argv[1]) == "-d") {
@@ -64,14 +61,14 @@ int main(int argc, char *argv[]) {
             const auto &node = ast.declarations[declID];
             if (node.kind != ASTNodeKind::Function) {
                 std::ostringstream script;
-                nodeToJS(script, node, ast, ctx, 0);
+                nodeToJS(script, node, ast, 0);
                 std::cout << script.str();
                 result += script.str();
             }
         }
     } else {
         std::ostringstream script;
-        scopeToJS(script, 0, ast, ctx, 0);
+        scopeToJS(script, 0, ast, 0);
         std::cout << "Generated JS script:\n" << script.str() << "\n";
         result = script.str();
     }

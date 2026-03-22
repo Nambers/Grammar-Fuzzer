@@ -21,8 +21,7 @@ static const char *mapUnaryOp(const std::string &op) {
 
 // -- value helper -------------------------------------------------------------
 static void valueToLua(std::ostringstream &out, const ASTNodeValue &val,
-                       const AST & /*ast*/, const BuiltinContext & /*ctx*/,
-                       int /*indentLevel*/) {
+                       const AST & /*ast*/, int /*indentLevel*/) {
     if (std::holds_alternative<std::string>(val.val)) {
         const auto &s = std::get<std::string>(val.val);
         // Intercept invalid Lua constructor calls emitted by AddVariable
@@ -55,8 +54,7 @@ static void valueToLua(std::ostringstream &out, const ASTNodeValue &val,
 
 // -- node → Lua source -------------------------------------------------------
 void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
-                           const AST &ast, const BuiltinContext &ctx,
-                           int indentLevel) {
+                           const AST &ast, int indentLevel) {
     const std::string ind(indentLevel * 4, ' ');
     out << ind;
 
@@ -66,37 +64,37 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
     case ASTNodeKind::DeclareVar: {
         const std::string &name = std::get<std::string>(node.fields[0].val);
         out << name << " = ";
-        valueToLua(out, node.fields[1], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[1], ast, indentLevel);
         break;
     }
 
     /* -- Return ---------------------------------------------------- */
     case ASTNodeKind::Return:
         out << "return ";
-        valueToLua(out, node.fields[0], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[0], ast, indentLevel);
         break;
 
     /* -- GetProp / SetProp  (simple assignment) -------------------- */
     case ASTNodeKind::GetProp:
         [[fallthrough]];
     case ASTNodeKind::SetProp:
-        valueToLua(out, node.fields[0], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[0], ast, indentLevel);
         out << " = ";
-        valueToLua(out, node.fields[1], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[1], ast, indentLevel);
         break;
 
     /* -- Call ------------------------------------------------------- */
     case ASTNodeKind::Call: {
         if (!std::get<std::string>(node.fields[0].val).empty()) {
-            valueToLua(out, node.fields[0], ast, ctx, indentLevel);
+            valueToLua(out, node.fields[0], ast, indentLevel);
             out << " = ";
         }
-        valueToLua(out, node.fields[1], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[1], ast, indentLevel);
         out << "(";
         for (size_t i = 2; i < node.fields.size(); ++i) {
             if (i > 2)
                 out << ", ";
-            valueToLua(out, node.fields[i], ast, ctx, indentLevel);
+            valueToLua(out, node.fields[i], ast, indentLevel);
         }
         out << ")";
         break;
@@ -104,22 +102,22 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
 
     /* -- BinaryOp -------------------------------------------------- */
     case ASTNodeKind::BinaryOp: {
-        valueToLua(out, node.fields[0], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[0], ast, indentLevel);
         out << " = ";
-        valueToLua(out, node.fields[1], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[1], ast, indentLevel);
         const char *op = mapBinaryOp(std::get<std::string>(node.fields[2].val));
         out << ' ' << op << ' ';
-        valueToLua(out, node.fields[3], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[3], ast, indentLevel);
         break;
     }
 
     /* -- UnaryOp --------------------------------------------------- */
     case ASTNodeKind::UnaryOp: {
-        valueToLua(out, node.fields[0], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[0], ast, indentLevel);
         out << " = ";
         const char *op = mapUnaryOp(std::get<std::string>(node.fields[1].val));
         out << op << ' ';
-        valueToLua(out, node.fields[2], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[2], ast, indentLevel);
         break;
     }
 
@@ -138,7 +136,7 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
         }
         out << ")\n";
 
-        scopeToLua(out, node.scope, ast, ctx, indentLevel + 1);
+        scopeToLua(out, node.scope, ast, indentLevel + 1);
 
         out << ind << "end";
         break;
@@ -229,7 +227,7 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
                 out << std::get<std::string>(fn.fields[2 + p * 2].val);
             }
             out << ")\n";
-            scopeToLua(out, fn.scope, ast, ctx, indentLevel + 1);
+            scopeToLua(out, fn.scope, ast, indentLevel + 1);
             out << ind << "end";
         }
         break;
@@ -250,20 +248,20 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
 
     /* -- SetItem  (container[index] = value) ------------------------- */
     case ASTNodeKind::SetItem:
-        valueToLua(out, node.fields[0], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[0], ast, indentLevel);
         out << "[";
-        valueToLua(out, node.fields[1], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[1], ast, indentLevel);
         out << "] = ";
-        valueToLua(out, node.fields[2], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[2], ast, indentLevel);
         break;
 
     /* -- GetItem  (result = container[index]) ------------------------- */
     case ASTNodeKind::GetItem:
-        valueToLua(out, node.fields[0], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[0], ast, indentLevel);
         out << " = ";
-        valueToLua(out, node.fields[1], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[1], ast, indentLevel);
         out << "[";
-        valueToLua(out, node.fields[2], ast, ctx, indentLevel);
+        valueToLua(out, node.fields[2], ast, indentLevel);
         out << "]";
         break;
 
@@ -281,8 +279,7 @@ void FuzzingAST::nodeToLua(std::ostringstream &out, const ASTNode &node,
 
 // -- scope → Lua source ------------------------------------------------------
 void FuzzingAST::scopeToLua(std::ostringstream &out, ScopeID sid,
-                            const AST &ast, const BuiltinContext &ctx,
-                            int indentLevel) {
+                            const AST &ast, int indentLevel) {
     if (sid == EMPTY_SCOPE)
         return;
     out << std::string(indentLevel * 4, ' ') << "-- scope " << sid << '\n';
@@ -291,8 +288,7 @@ void FuzzingAST::scopeToLua(std::ostringstream &out, ScopeID sid,
 
     // GlobalRef (no-op for Lua but we emit the comment for consistency)
     if (scope.globalRefID != -1) {
-        nodeToLua(out, ast.declarations[scope.globalRefID], ast, ctx,
-                  indentLevel);
+        nodeToLua(out, ast.declarations[scope.globalRefID], ast, indentLevel);
         empty = false;
     }
 
@@ -300,21 +296,21 @@ void FuzzingAST::scopeToLua(std::ostringstream &out, ScopeID sid,
     for (NodeID id : scope.declarations) {
         const auto &decl = ast.declarations[id];
         if (decl.kind != ASTNodeKind::Function) {
-            nodeToLua(out, decl, ast, ctx, indentLevel);
+            nodeToLua(out, decl, ast, indentLevel);
             empty = false;
         }
     }
 
     // expressions
     for (NodeID id : scope.expressions) {
-        nodeToLua(out, ast.expressions[id], ast, ctx, indentLevel);
+        nodeToLua(out, ast.expressions[id], ast, indentLevel);
         empty = false;
     }
 
     // return
     if (scope.retNodeID != -1) {
         const auto &retNode = ast.expressions[scope.retNodeID];
-        nodeToLua(out, retNode, ast, ctx, indentLevel);
+        nodeToLua(out, retNode, ast, indentLevel);
         empty = false;
     }
 
