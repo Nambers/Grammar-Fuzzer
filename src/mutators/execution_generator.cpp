@@ -66,8 +66,9 @@ buildValueExprFromKey(const PropKey &valueKey, ScopeID scopeID, const AST &ast,
     }
 
     if (value.isCallable) {
-        auto callExpr = buildFunctionCallG(value.funcSig.paramTypes, scopeID,
-                                           ast, ctx, globalVars);
+        auto callExpr =
+            buildFunctionCallG(value.extra.get<FunctionSignature>().paramTypes,
+                               scopeID, ast, ctx, globalVars);
         if (callExpr.empty())
             return std::nullopt;
         valueExpr += callExpr;
@@ -228,7 +229,7 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 break;
             }
             const auto &func = unfoldKey(funcKey, ast.ast, ctx);
-            const auto &sig = func.funcSig;
+            const auto &sig = func.extra.get<FunctionSignature>();
             const auto fname = func.name;
             curr.fields.emplace_back(""); // placeholder for return arg
             curr.fields.emplace_back(fname);

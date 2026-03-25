@@ -73,40 +73,6 @@ class FunctionSignature {
     bool operator==(const FunctionSignature &other) const = default;
 };
 
-class PropInfo {
-  public:
-    TypeID type = -1;
-    ScopeID scope = -1;
-    std::string name;
-    bool isConst = false;
-    bool isCallable = false;
-    bool isArg = false;
-    FunctionSignature funcSig = {};
-    bool operator==(const PropInfo &other) const = default;
-    struct Hash {
-        template <typename T>
-        static inline void hash_combine(size_t &seed, T value) {
-            seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-        }
-        std::size_t operator()(const FuzzingAST::PropInfo &key) const {
-            size_t seed = 0;
-
-            hash_combine(seed, std::hash<TypeID>{}(key.type));
-            hash_combine(seed, std::hash<ScopeID>{}(key.scope));
-            hash_combine(seed, std::hash<std::string>{}(key.name));
-            hash_combine(seed, std::hash<bool>{}(key.isConst));
-            hash_combine(seed, std::hash<bool>{}(key.isCallable));
-            hash_combine(seed, std::hash<bool>{}(key.isArg));
-            // Optionally, hash funcSig if needed for uniqueness
-            return seed;
-        }
-    };
-};
-
-class ASTData; // forward declaration
-class AST;
-class ASTScope;
-
 // avoid store ptr
 class PropKey {
   public:
@@ -126,6 +92,62 @@ class PropKey {
         return emptyKeyInstance;
     }
 };
+
+class PropExtra {
+  public:
+    std::optional<std::variant<FunctionSignature, std::vector<PropKey>>> val;
+
+  public:
+    template <typename T> T &get() {
+        if (val && std::holds_alternative<T>(*val)) {
+            return std::get<T>(*val);
+        }
+        throw std::bad_variant_access();
+    }
+    template <typename T> const T &get() const {
+        if (val && std::holds_alternative<T>(*val)) {
+            return std::get<T>(*val);
+        }
+        throw std::bad_variant_access();
+    }
+    bool operator==(const PropExtra &other) const = default;
+};
+
+class PropInfo {
+  public:
+    TypeID type = -1;
+    ScopeID scope = -1;
+    std::string name;
+    bool isConst = false;
+    bool isCallable = false;
+    bool isArg = false;
+    // if func, it's FunctionSignature; if class, it's vector<std::string>
+    PropExtra extra;
+    bool operator==(const PropInfo &other) const = default;
+    struct Hash {
+        template <typename T>
+        static inline void hash_combine(size_t &seed, T value) {
+            seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        }
+        std::size_t operator()(const FuzzingAST::PropInfo &key) const {
+            size_t seed = 0;
+
+            hash_combine(seed, std::hash<TypeID>{}(key.type));
+            hash_combine(seed, std::hash<ScopeID>{}(key.scope));
+            hash_combine(seed, std::hash<std::string>{}(key.name));
+            hash_combine(seed, std::hash<bool>{}(key.isConst));
+            hash_combine(seed, std::hash<bool>{}(key.isCallable));
+            hash_combine(seed, std::hash<bool>{}(key.isArg));
+            hash_combine(seed, std::hash<size_t>{}(key.extra.val->index()));
+            // Optionally, hash funcSig if needed for uniqueness
+            return seed;
+        }
+    };
+};
+
+class ASTData; // forward declaration
+class AST;
+class ASTScope;
 
 enum class ObjectKind {
     mutable_var = 0,
@@ -204,6 +226,8 @@ class BuiltinContext {
     std::discrete_distribution<int> pickValueKindDist{
         9, 1, 6}; // 9:1:6 non-const, const and function result
                   // --- variable provider ---
+    std::unordered_map<TypeID, std::vector<PropKey>> methodIndex_;
+
   public:
     void initFromBuiltins();
     // Build index for all scopes, merging parent scope and initializing
@@ -241,10 +265,6 @@ class BuiltinContext {
 
     std::bernoulli_distribution respectType_dist{
         0.8}; // 80% respect type, 20% not respect type
-
-    std::unordered_map<TypeID, std::uniform_int_distribution<size_t>>
-        methodDist_;
-    std::unordered_map<TypeID, std::vector<PropKey>> methodIndex_;
 };
 
 class ASTNodeValue {
@@ -301,6 +321,8 @@ class AST {
     // std::vector<PropInfo> functions;
     // TypeID -> -1 means not under class
     std::unordered_map<TypeID, std::vector<PropInfo>> classProps;
+    // trace the class instance for adding function purpose
+    std::unordered_map<NodeID, PropInfo> classes;
 
     // generate main block
     AST() : scopes({ASTScope()}) {}

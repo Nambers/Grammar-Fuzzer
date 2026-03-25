@@ -85,11 +85,11 @@ def convert_types_to_index(results: dict):
         real_results["funcs"][get_index(name)] = []
         for sig in obj:
             if sig["isCallable"]:
-                sig["funcSig"]["paramTypes"] = [
-                    get_index(t) for t in sig["funcSig"]["paramTypes"]
+                sig["extra"]["paramTypes"] = [
+                    get_index(t) for t in sig["extra"]["paramTypes"]
                 ]
-                sig["funcSig"]["returnType"] = get_index(sig["funcSig"]["returnType"])
-                sig["funcSig"]["selfType"] = get_index(sig["funcSig"]["selfType"])
+                sig["extra"]["returnType"] = get_index(sig["extra"]["returnType"])
+                sig["extra"]["selfType"] = get_index(sig["extra"]["selfType"])
             else:
                 sig["type"] = get_index(sig["type"])
             real_results["funcs"][get_index(name)].append(sig)
@@ -99,13 +99,13 @@ def convert_types_to_index(results: dict):
             real_results["modules"][i][get_index(name)] = []
             for sig in obj:
                 if sig["isCallable"]:
-                    sig["funcSig"]["paramTypes"] = [
-                        get_index(t) for t in sig["funcSig"]["paramTypes"]
+                    sig["extra"]["paramTypes"] = [
+                        get_index(t) for t in sig["extra"]["paramTypes"]
                     ]
-                    sig["funcSig"]["returnType"] = get_index(
-                        sig["funcSig"]["returnType"]
+                    sig["extra"]["returnType"] = get_index(
+                        sig["extra"]["returnType"]
                     )
-                    sig["funcSig"]["selfType"] = get_index(sig["funcSig"]["selfType"])
+                    sig["extra"]["selfType"] = get_index(sig["extra"]["selfType"])
                 else:
                     sig["type"] = get_index(sig["type"])
                 real_results["modules"][i][get_index(name)].append(sig)

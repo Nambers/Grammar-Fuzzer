@@ -1,8 +1,8 @@
+#include "target.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "dumper.hpp"
 #include "log.hpp"
-#include "target.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
@@ -14,7 +14,6 @@
 #include <sstream>
 #include <sys/time.h>
 #include <unistd.h>
-#include <unordered_set>
 
 using namespace FuzzingAST;
 
@@ -203,9 +202,10 @@ static void errorCallback(const std::string &errMsg, AST &ast,
                             ? ctx.builtinsProps[tid]
                             : ast.classProps[tid];
                     for (auto &pi : methods) {
+                        auto &funcSig = pi.extra.get<FunctionSignature>();
                         if (pi.name == methodName && pi.isCallable &&
-                            argNum - 1 < pi.funcSig.paramTypes.size()) {
-                            pi.funcSig.paramTypes[argNum - 1] = expTid;
+                            argNum - 1 < funcSig.paramTypes.size()) {
+                            funcSig.paramTypes[argNum - 1] = expTid;
                             return;
                         }
                     }
@@ -214,9 +214,10 @@ static void errorCallback(const std::string &errMsg, AST &ast,
             // global function
             auto &globals = ctx.builtinsProps[-1];
             for (auto &pi : globals) {
+                auto &funcSig = pi.extra.get<FunctionSignature>();
                 if (pi.name == funcName && pi.isCallable &&
-                    argNum - 1 < pi.funcSig.paramTypes.size()) {
-                    pi.funcSig.paramTypes[argNum - 1] = expTid;
+                    argNum - 1 < funcSig.paramTypes.size()) {
+                    funcSig.paramTypes[argNum - 1] = expTid;
                     return;
                 }
             }
@@ -344,9 +345,10 @@ static void errorCallback(const std::string &errMsg, AST &ast,
             // shrink parameter list to expectedMax
             auto shrink = [&](std::vector<PropInfo> &props) {
                 for (auto &pi : props) {
+                    auto &funcSig = pi.extra.get<FunctionSignature>();
                     if (pi.name == funcName && pi.isCallable &&
-                        pi.funcSig.paramTypes.size() > expectedMax) {
-                        pi.funcSig.paramTypes.resize(expectedMax);
+                        funcSig.paramTypes.size() > expectedMax) {
+                        funcSig.paramTypes.resize(expectedMax);
                         return true;
                     }
                 }

@@ -1,8 +1,8 @@
+#include "target.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "dumper.hpp"
 #include "log.hpp"
-#include "target.hpp"
 #include <Python.h> // Python.h should be first to include
 #include <atomic>
 #include <chrono>
@@ -351,7 +351,8 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                     if (it != props.end()) {
                         // remove the property
                         props.erase(it);
-                        if(tid < ctx.builtinTypesCnt) ctx.initFromBuiltins();
+                        if (tid < ctx.builtinTypesCnt)
+                            ctx.initFromBuiltins();
                         INFO("Removed property '{}' from typeID {}", attrName,
                              tid);
                         handled = true;
@@ -390,7 +391,8 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                                              return prop.name == methodName;
                                          });
                         if (it != methods.end()) {
-                            it->funcSig.paramTypes[argNum - 1] =
+                            it->extra.get<FunctionSignature>()
+                                .paramTypes[argNum - 1] =
                                 resolveType(expType, ctx, ast, 0);
                             INFO("Updated method '{}' for expected "
                                  "type '{}'({}) for argument {}",
@@ -407,7 +409,8 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                                            });
                     if (it != ctx.builtinsProps.at(-1).end()) {
                         const auto tid = resolveType(expType, ctx, ast, 0);
-                        it->funcSig.paramTypes[argNum - 1] = tid;
+                        it->extra.get<FunctionSignature>()
+                            .paramTypes[argNum - 1] = tid;
                         INFO("Updated function '{}' with expected type "
                              "'{}'({}) for "
                              "argument {}",
@@ -479,7 +482,8 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                                              return prop.name == methodName;
                                          });
                         if (it != methods.end()) {
-                            it->funcSig.paramTypes.resize(correctArgs);
+                            it->extra.get<FunctionSignature>()
+                                .paramTypes.resize(correctArgs);
                             INFO("Updated method '{}' to have {} arguments",
                                  methodName, correctArgs);
                             handled = true;
@@ -494,7 +498,8 @@ static void errorCallback(AST &ast, BuiltinContext &ctx,
                                                       prop.isCallable;
                                            });
                     if (it != funcs.end()) {
-                        it->funcSig.paramTypes.resize(correctArgs);
+                        it->extra.get<FunctionSignature>().paramTypes.resize(
+                            correctArgs);
                         INFO("Updated free function '{}' to have {} arguments",
                              funcName, correctArgs);
                         handled = true;
@@ -734,7 +739,7 @@ Exe_Result FuzzingAST::reflectObject(AST &ast, ASTScope &scope,
                 item["type"] =
                     resolveType(item["type"].get<std::string>(), ctx, ast, sid);
             if (item.value<bool>("isCallable", false)) {
-                auto &sig = item["funcSig"];
+                auto &sig = item["extra"];
                 for (auto &typeName : sig["paramTypes"]) {
                     typeName =
                         resolveType(typeName.get<std::string>(), ctx, ast, sid);

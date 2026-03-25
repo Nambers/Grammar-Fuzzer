@@ -163,14 +163,6 @@ PropKey BuiltinContext::pickRandomVar(ScopeID scopeID,
     return pickRandomVar(scopeID, t, valueKind, scopes);
 }
 
-PropKey BuiltinContext::pickRandomMethod(TypeID tid) {
-    auto itD = methodDist_.find(tid);
-    if (itD == methodDist_.end())
-        return PropKey::emptyKey();
-
-    return methodIndex_[tid][itD->second(rng)];
-}
-
 ObjectKind FuzzingAST::BuiltinContext::pickValueKind() {
     return static_cast<ObjectKind>(pickValueKindDist(rng));
 }

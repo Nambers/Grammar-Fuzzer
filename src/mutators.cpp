@@ -1,6 +1,7 @@
+#include "mutators.hpp"
+#include "ast.hpp"
 #include "driver.hpp"
 #include "log.hpp"
-#include "mutators.hpp"
 #include "serialization.hpp"
 
 using namespace FuzzingAST;
@@ -51,14 +52,14 @@ FuzzingAST::lookupMethodSig(TypeID tid, const std::string &name, const AST &ast,
     if (slice != ctx.builtinsProps.end()) {
         auto ret = getPropByName(name, slice->second, true, startScopeID);
         if (ret)
-            return ret->funcSig;
+            return ret->extra.get<FunctionSignature>();
     }
 
     const auto &slice2 = ast.classProps.find(tid);
     if (slice2 != ast.classProps.end()) {
         auto it = getPropByName(name, slice2->second, true, startScopeID);
         if (it)
-            return it->funcSig;
+            return it->extra.get<FunctionSignature>();
     }
 
     return std::nullopt;
@@ -122,9 +123,12 @@ std::string FuzzingAST::buildFunctionCallG(
             return {};
         }
         const auto &varProp = unfoldKey(varNameKey, ast, ctx);
-        if (varProp.isCallable && varProp.funcSig.returnType == paramTypes[i]) {
-            auto ret = buildFunctionCallG(varProp.funcSig.paramTypes, sid, ast,
-                                          ctx, globalVars);
+        if (varProp.isCallable &&
+            varProp.extra.get<FunctionSignature>().returnType ==
+                paramTypes[i]) {
+            auto ret = buildFunctionCallG(
+                varProp.extra.get<FunctionSignature>().paramTypes, sid, ast,
+                ctx, globalVars);
             if (ret.empty())
                 return {};
             callExpr += varProp.name + ret;

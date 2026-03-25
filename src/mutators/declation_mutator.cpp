@@ -45,7 +45,7 @@ enum class MutationPick {
 
 constexpr static std::array PICK_MUTATION_WEIGHT = {
     30, // AddFunction
-    12,  // AddClass
+    12, // AddClass
     20, // AddVariable
     6,  // AddImport
 };
@@ -93,7 +93,8 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
         // do other mutations
         MutationPick pick;
         if (ast.scopes.size() > MAX_SCOPE_CNT)
-            pick = static_cast<MutationPick>(rng() % 2 + 2); // only add variable or import
+            pick = static_cast<MutationPick>(rng() % 2 +
+                                             2); // only add variable or import
         else
             pick = static_cast<MutationPick>(dist(rng));
 
@@ -129,21 +130,23 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                                   ctx, ast, sid);
             }
 
-            const auto &pickedKey = ctx.pickRandomMethod(tid);
-            if (pickedKey.empty()) {
+            auto &cands = ast.classes[clsID].extra.get<std::vector<PropKey>>();
+            if (cands.empty()) {
                 // no method found
                 state = MutationState::STATE_REROLL;
                 break;
             }
+            const PropKey pickedKey = cands.back();
+            cands.pop_back();
             const auto &picked = unfoldKey(pickedKey, ast, ctx);
 
             NodeID funNodeID = ast.declarations.size();
             ScopeID funSid = ast.scopes.size();
+            const auto &funcSig = picked.extra.get<FunctionSignature>();
 
-            ast.declarations.reserve(funNodeID + 1 +
-                                     picked.funcSig.paramTypes.size());
+            ast.declarations.reserve(funNodeID + 1 + funcSig.paramTypes.size());
 
-            ast.scopes.emplace_back(sid, picked.funcSig.returnType);
+            ast.scopes.emplace_back(sid, funcSig.returnType);
 
             ast.declarations.emplace_back(); // index == funNodeID
             {
@@ -151,7 +154,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 fun.kind = ASTNodeKind::Function;
                 fun.scope = funSid;
                 fun.fields.emplace_back(picked.name);
-                fun.fields.emplace_back(picked.funcSig.returnType);
+                fun.fields.emplace_back(funcSig.returnType);
             }
 
             ast.declarations[clsID].fields.emplace_back(funNodeID);
@@ -160,7 +163,7 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 ASTScope &funScope = ast.scopes[funSid];
                 std::string arg = "arg_a";
                 // the first arg equiv to self
-                for (TypeID pt : picked.funcSig.paramTypes) {
+                for (TypeID pt : funcSig.paramTypes) {
                     ast.declarations[funNodeID].fields.emplace_back(arg);
 
                     funScope.variables.push_back(ast.variables.size());
@@ -266,8 +269,8 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 auto &funScope = ast.scopes[funSid];
                 std::string arg = "arg_a";
                 // first arg is equiv to self
-                for (TypeID pt :
-                     func->funcSig.paramTypes) { // [param‑types ...]
+                for (TypeID pt : func->extra.get<FunctionSignature>()
+                                     .paramTypes) { // [param‑types ...]
                     auto &fun = ast.declarations[funID];
                     fun.fields.emplace_back(arg);
                     funScope.variables.push_back(ast.variables.size());
@@ -288,6 +291,19 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             }
 
             ast.scopes[sid].declarations.push_back(ast.declarations.size());
+
+            // add potential override function to extra, grab from the
+            // methodIndex
+            {
+                auto clz =
+                    PropInfo{.type = inheritType,
+                             .scope = sid,
+                             .name = std::get<std::string>(cls.fields[0].val),
+                             .extra = {ctx.methodIndex_[inheritType]}};
+                std::shuffle(clz.extra.get<std::vector<PropKey>>().begin(),
+                             clz.extra.get<std::vector<PropKey>>().end(), rng);
+                ast.classes[ast.declarations.size()] = std::move(clz);
+            };
 
             ast.declarations.push_back(std::move(cls));
             break;

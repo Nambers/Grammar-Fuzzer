@@ -71,28 +71,20 @@ FuzzingAST::getPropByName(const std::string &name,
 
 void FuzzingAST::BuiltinContext::initFromBuiltins() {
     builtinsScopeCache = {};
-    methodDist_.clear();
     methodIndex_.clear();
 
     for (const auto &kv : builtinsProps) {
         TypeID parentType = kv.first;
         const auto &pis = kv.second;
-        int total = 0;
         for (size_t j = 0; j < pis.size(); ++j) {
             const auto &pi = pis[j];
             auto &index = builtinsScopeCache.selectIndex(pi);
             index[pi.type].emplace_back(BUILTIN_MODULE_ID, j, parentType);
             index[0].emplace_back(BUILTIN_MODULE_ID, j,
                                   parentType); // fallback
-
-            if (pi.isCallable) {
+            if (pi.isCallable)
                 methodIndex_[parentType].emplace_back(BUILTIN_MODULE_ID, j,
                                                       parentType);
-                ++total;
-            }
         }
-        if (parentType != NOT_UNDER_CLASS)
-            methodDist_[parentType] = std::uniform_int_distribution<size_t>(
-                0, total > 0 ? total - 1 : 0);
     }
 }

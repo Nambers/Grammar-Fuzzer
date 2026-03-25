@@ -207,7 +207,11 @@ def collect_class_methods(cls, qualified_name=None):
         else:
             sig = extract_signature(real_func, clsname, method_type)
             methods[clsname].append(
-                {"name": attr_name, "funcSig": sig, "isCallable": True}
+                {
+                    "name": attr_name,
+                    "extra": sig,
+                    "isCallable": True,
+                }
             )
 
     return methods
@@ -233,7 +237,11 @@ def collect_module_functions(module, qualified_name=None):
                 "static" if isinstance(attr, staticmethod) else "instance",
             )
             functions[modname].append(
-                {"name": attr_name, "funcSig": sig, "isCallable": True}
+                {
+                    "name": attr_name,
+                    "extra": sig,
+                    "isCallable": True,
+                }
             )
         else:
             functions[modname].append(
@@ -257,7 +265,7 @@ def collect_all(enable_builtins=False, results=None):
                         results["funcs"]["-1"].append(
                             {
                                 "name": name,
-                                "funcSig": extract_signature(obj),
+                                "extra": extract_signature(obj),
                                 "isCallable": True,
                             }
                         )
