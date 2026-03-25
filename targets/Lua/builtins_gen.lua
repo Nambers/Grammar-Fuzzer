@@ -84,13 +84,13 @@ end
 local function func(name, params, ret, selfType, isConst)
     return { name = name, isCallable = true, isConst = isConst == nil and true or isConst,
              scope = 0, type = ret or 0,
-             funcSig = sig(params, ret, selfType) }
+             extra = sig(params, ret, selfType) }
 end
 
 local function const_prop(name, tid)
     return { name = name, isCallable = false, isConst = true, scope = 0,
              type = tid,
-             funcSig = sig({}, -1, -1) }
+             extra = sig({}, -1, -1) }
 end
 
 -- ==============================================================================

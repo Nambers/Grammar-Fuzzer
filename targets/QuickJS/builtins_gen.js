@@ -84,7 +84,7 @@ function makeProp({
 		name,
 		isConst,
 		isCallable,
-		funcSig: sig
+		extra: sig
 	};
 }
 

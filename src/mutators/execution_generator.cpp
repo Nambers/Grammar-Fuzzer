@@ -81,6 +81,8 @@ buildValueExprFromKey(const PropKey &valueKey, ScopeID scopeID, const AST &ast,
     return valueExpr;
 }
 
+extern uint32_t badState;
+
 int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                               std::unordered_set<std::string> &globalVars,
                               ScopeID scopeID, const ASTScope &scope) {
@@ -571,6 +573,7 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
         globalProps.resize(globalPropsSizeBefore);
         ast.ast.nameCnt = nameCntBefore;
         ctx.updateVars(ast.ast);
+        ++badState;
         return 1;
     }
     return 0;
