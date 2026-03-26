@@ -153,6 +153,8 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
 
     std::unordered_set<std::string> globalVars;
     auto execCtx = getInitExecutionContext();
+    size_t consecutiveFailedRuns = 0;
+    size_t maxConsecutiveFailedRuns = MIN_MAX_CONSECUTIVE_FAILED_RUNS;
     ast_backup_str = dumpReplayAST(ast.ast);
     history_backup_str = "";
     curr_node_backup_str.clear();
@@ -167,6 +169,9 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
     const auto scopeCnt = ast.ast.scopes.size();
     while (scheduler.noEdgeCount <= scheduler.execFailureThreshold() &&
            history.size() < MAX_GEN_HISTORY) {
+        maxConsecutiveFailedRuns = std::max<size_t>(
+            MIN_MAX_CONSECUTIVE_FAILED_RUNS,
+            scheduler.execFailureThreshold() / CONSECUTIVE_FAILED_RUNS_FACTOR);
         TUI::update(scheduler, scopeCnt);
         ASTNode data;
         const AST astBeforeLine = ast.ast;
@@ -188,11 +193,13 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
             ++scheduler.noEdgeCount;
         }
         if (ret == Exe_Result::OK) {
+            consecutiveFailedRuns = 0;
             history_backup_str += curr_node_backup_str;
             curr_node_backup_str.clear();
             updateTypes(ast, ctx, execCtx);
             history.push_back(data);
         } else if (ret == Exe_Result::TIMEOUT) {
+            ++consecutiveFailedRuns;
             ast.ast = astBeforeLine;
             // timeout
             execCtx = getInitExecutionContext();
@@ -203,18 +210,26 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
                     ERROR("Failed to replay lines after timeout");
                 else if (ret == Exe_Result::TIMEOUT)
                     ERROR("Timeout while replaying lines after timeout");
-                curr_node_backup_str.clear();
                 ++badState;
                 // something broke, gave up current declaration
-                return std::move(history);
+                break;
             }
             updateTypes(ast, ctx, execCtx);
         } else {
             // TODO don't override error handled result
+            ++consecutiveFailedRuns;
             ast.ast = astBeforeLine;
+        }
+        if (consecutiveFailedRuns >= maxConsecutiveFailedRuns) {
+            INFO("breaking execution generation due to {} consecutive failed "
+                 "runs",
+                 consecutiveFailedRuns);
+            ++badState;
+            break;
         }
         scheduler.ctx.updateVars(ast.ast);
     }
+    curr_node_backup_str.clear();
     return std::move(history);
 }
 

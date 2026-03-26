@@ -32,6 +32,7 @@ class FuzzSchedulerState {
 
 	void update(bool gotNewEdge, size_t maxNumScopes);
 
+	// range of [100, 2000]
 	size_t execFailureThreshold() const;
 };
 } // namespace FuzzingAST

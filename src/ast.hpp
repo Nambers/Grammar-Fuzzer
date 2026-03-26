@@ -32,6 +32,9 @@ constexpr size_t MAX_SCOPE_CNT = 20;
 constexpr size_t MAX_GEN_HISTORY = 100;
 constexpr size_t REROLL_ATTEMPTS = 100;
 
+constexpr size_t MIN_MAX_CONSECUTIVE_FAILED_RUNS = 50;
+constexpr int CONSECUTIVE_FAILED_RUNS_FACTOR = 5;
+
 constexpr uint32_t RUNLINES_TIMEOUT_MS = 1000;
 constexpr uint32_t RUNLINE_TIMEOUT_MS = 500;
 
