@@ -1,7 +1,7 @@
-#include "mutators.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "log.hpp"
+#include "mutators.hpp"
 #include "serialization.hpp"
 
 using namespace FuzzingAST;
@@ -138,4 +138,42 @@ std::string FuzzingAST::buildFunctionCallG(
         }
     }
     return callExpr + ")";
+}
+
+void FuzzingAST::addFunction(const PropInfo &picked, AST &ast, ScopeID funSid,
+                             NodeID funNodeID) {
+    const auto &funcSig = picked.extra.get<FunctionSignature>();
+    ASTNode &fun = ast.declarations[funNodeID];
+    ASTScope &funScope = ast.scopes[funSid];
+
+    fun.kind = ASTNodeKind::Function;
+    fun.scope = funSid;
+    fun.fields.emplace_back(picked.name);
+    fun.fields.emplace_back(funcSig.returnType);
+
+    std::string arg = "arg_a";
+    // the first arg equiv to self
+    if (funcSig.selfType != -1) {
+        ast.declarations[funNodeID].fields.emplace_back(arg);
+
+        funScope.variables.push_back(ast.variables.size());
+        ast.variables.emplace_back(
+            NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(), NOT_UNDER_CLASS);
+        ast.classProps[NOT_UNDER_CLASS].emplace_back(funcSig.selfType, funSid,
+                                                     arg, false, false, true);
+        bumpIdentifier(arg);
+        ast.declarations[funNodeID].fields.emplace_back(funcSig.selfType);
+    }
+    for (TypeID pt : funcSig.paramTypes) {
+        ast.declarations[funNodeID].fields.emplace_back(arg);
+
+        funScope.variables.push_back(ast.variables.size());
+        ast.variables.emplace_back(
+            NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(), NOT_UNDER_CLASS);
+        ast.classProps[NOT_UNDER_CLASS].emplace_back(pt, funSid, arg, false,
+                                                     false, true);
+        bumpIdentifier(arg);
+        ast.declarations[funNodeID].fields.emplace_back(pt);
+    }
+    funScope.paramCnt = funScope.variables.size();
 }

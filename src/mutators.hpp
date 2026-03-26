@@ -27,6 +27,7 @@ std::string
 buildFunctionCallG(const std::vector<FuzzingAST::TypeID> &paramTypes,
                    ScopeID sid, const AST &ast, BuiltinContext &ctx,
                    std::unordered_set<std::string> &globalVars);
-
+void addFunction(const PropInfo &picked, AST &ast, ScopeID funSid,
+                 NodeID funNodeID);
 } // namespace FuzzingAST
 #endif // MUTATORS_HPP

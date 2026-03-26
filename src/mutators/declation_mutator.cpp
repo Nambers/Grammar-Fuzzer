@@ -99,87 +99,6 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             pick = static_cast<MutationPick>(dist(rng));
 
         switch (pick) {
-            /* ----------  AddFunction  ---------- */
-        case MutationPick::AddFunction: {
-            NodeID clsID;
-            {
-                std::vector<NodeID> classes;
-                for (size_t i = 0; i < ast.declarations.size(); ++i)
-                    if (ast.declarations[i].kind == ASTNodeKind::Class)
-                        classes.push_back(i);
-
-                if (classes.empty()) {
-                    state = MutationState::STATE_REROLL;
-                    break;
-                }
-
-                clsID = classes[rng() % classes.size()];
-            }
-            TypeID tid;
-            {
-                ASTNode &clsNode = ast.declarations[clsID];
-
-                // get inheritance class name
-                // unreachable
-                if (std::holds_alternative<int64_t>(clsNode.fields[1].val)) {
-                    // class don't have inheritance
-                    state = MutationState::STATE_REROLL;
-                    break;
-                }
-                tid = resolveType(std::get<std::string>(clsNode.fields[1].val),
-                                  ctx, ast, sid);
-            }
-
-            auto &cands = ast.classes[clsID].extra.get<std::vector<PropKey>>();
-            if (cands.empty()) {
-                // no method found
-                state = MutationState::STATE_REROLL;
-                break;
-            }
-            const PropKey pickedKey = cands.back();
-            cands.pop_back();
-            const auto &picked = unfoldKey(pickedKey, ast, ctx);
-
-            NodeID funNodeID = ast.declarations.size();
-            ScopeID funSid = ast.scopes.size();
-            const auto &funcSig = picked.extra.get<FunctionSignature>();
-
-            ast.declarations.reserve(funNodeID + 1 + funcSig.paramTypes.size());
-
-            ast.scopes.emplace_back(sid, funcSig.returnType);
-
-            ast.declarations.emplace_back(); // index == funNodeID
-            {
-                ASTNode &fun = ast.declarations[funNodeID];
-                fun.kind = ASTNodeKind::Function;
-                fun.scope = funSid;
-                fun.fields.emplace_back(picked.name);
-                fun.fields.emplace_back(funcSig.returnType);
-            }
-
-            ast.declarations[clsID].fields.emplace_back(funNodeID);
-
-            {
-                ASTScope &funScope = ast.scopes[funSid];
-                std::string arg = "arg_a";
-                // the first arg equiv to self
-                for (TypeID pt : funcSig.paramTypes) {
-                    ast.declarations[funNodeID].fields.emplace_back(arg);
-
-                    funScope.variables.push_back(ast.variables.size());
-                    ast.variables.emplace_back(
-                        NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(),
-                        NOT_UNDER_CLASS);
-                    ast.classProps[NOT_UNDER_CLASS].emplace_back(
-                        pt, funSid, arg, false, false, true);
-                    bumpIdentifier(arg);
-                    ast.declarations[funNodeID].fields.emplace_back(pt);
-                }
-                funScope.paramCnt = funScope.variables.size();
-            }
-            break;
-        }
-
         /* ----------  AddClass  ---------- */
         case MutationPick::AddClass: {
             if (ast.scopes[sid].parent != -1) {
@@ -242,54 +161,6 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             // sentinel
             cls.fields.push_back(SENTINEL_NODE);
 
-            // check if has init class, if so, add it as function and do super
-            // call
-            // std::string initName = inheritName + ".__init__";
-            const auto &func =
-                ctx.builtinsProps.contains(inheritType)
-                    ? getPropByName("__init__", ctx.builtinsProps[inheritType],
-                                    true, sid)
-                    : getPropByName("__init__", ast.classProps[inheritType],
-                                    true, sid);
-            if (func) {
-                NodeID funID = ast.declarations.size();
-                const ScopeID funSid = ast.scopes.size();
-                ast.declarations.emplace_back(); // index == funID
-                {
-                    ASTNode &fun = ast.declarations[funID];
-                    fun.kind = ASTNodeKind::Function;
-                    fun.scope = funSid;
-                    fun.fields.emplace_back("__init__");
-                    // __init__ function don't have return type
-                    fun.fields.emplace_back(NO_RETURN);
-                }
-
-                ast.scopes.emplace_back(sid, 0);
-
-                auto &funScope = ast.scopes[funSid];
-                std::string arg = "arg_a";
-                // first arg is equiv to self
-                for (TypeID pt : func->extra.get<FunctionSignature>()
-                                     .paramTypes) { // [param‑types ...]
-                    auto &fun = ast.declarations[funID];
-                    fun.fields.emplace_back(arg);
-                    funScope.variables.push_back(ast.variables.size());
-                    ast.variables.emplace_back(
-                        NO_MODULE, ast.classProps[NOT_UNDER_CLASS].size(),
-                        NOT_UNDER_CLASS);
-                    ast.classProps[NOT_UNDER_CLASS].emplace_back(
-                        pt, funSid, arg, false, false, true);
-                    bumpIdentifier(arg);
-                    fun.fields.emplace_back(pt);
-                }
-                funScope.paramCnt = funScope.variables.size();
-                cls.fields.emplace_back(funID); // push back as member function
-                // will be added in reflectObject
-                // scope.funcSignatures[std::get<std::string>(cls.fields[0].val)
-                // +
-                //                      ".__init__"] = sig;
-            }
-
             ast.scopes[sid].declarations.push_back(ast.declarations.size());
 
             // add potential override function to extra, grab from the
@@ -306,6 +177,65 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
             };
 
             ast.declarations.push_back(std::move(cls));
+
+            // continue to add a function
+            [[fallthrough]];
+        }
+            /* ----------  AddFunction  ---------- */
+        case MutationPick::AddFunction: {
+            NodeID clsID;
+            {
+                std::vector<NodeID> classes;
+                for (size_t i = 0; i < ast.declarations.size(); ++i)
+                    if (ast.declarations[i].kind == ASTNodeKind::Class)
+                        classes.push_back(i);
+
+                if (classes.empty()) {
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+
+                clsID = classes[rng() % classes.size()];
+            }
+            TypeID tid;
+            {
+                ASTNode &clsNode = ast.declarations[clsID];
+
+                // get inheritance class name
+                // unreachable
+                if (std::holds_alternative<int64_t>(clsNode.fields[1].val)) {
+                    // class don't have inheritance
+                    state = MutationState::STATE_REROLL;
+                    break;
+                }
+                tid = resolveType(std::get<std::string>(clsNode.fields[1].val),
+                                  ctx, ast, sid);
+            }
+
+            auto &cands = ast.classes[clsID].extra.get<std::vector<PropKey>>();
+            if (cands.empty()) {
+                // no method found
+                state = MutationState::STATE_REROLL;
+                break;
+            }
+            const PropKey pickedKey = cands.back();
+            cands.pop_back();
+            const auto &picked = unfoldKey(pickedKey, ast, ctx);
+
+            NodeID funNodeID = ast.declarations.size();
+            ScopeID funSid = ast.scopes.size();
+            const auto &funcSig = picked.extra.get<FunctionSignature>();
+
+            ast.declarations.reserve(funNodeID + 1 + funcSig.paramTypes.size());
+
+            ast.scopes.emplace_back(sid, funcSig.returnType);
+
+            ast.declarations.emplace_back(); // index == funNodeID
+
+            ast.declarations[clsID].fields.emplace_back(funNodeID);
+
+            addFunction(picked, ast, funSid, funNodeID);
+
             break;
         }
         case MutationPick::AddVariable: {
