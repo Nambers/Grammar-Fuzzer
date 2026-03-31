@@ -25,7 +25,9 @@
 using namespace FuzzingAST;
 
 // need to be consist with the one in builtins.py
-constexpr std::array TARGET_LIBS = {"math", "marshal", "datetime"};
+// generally we only consider those common library enabled in
+// sandbox enviornment (libraries that generally considered safe)
+constexpr std::array TARGET_LIBS = {"math", "json", "datetime", "_sre"};
 extern const std::span<const char *const> targetLibs(TARGET_LIBS);
 std::uniform_int_distribution<int> distLib(0, TARGET_LIBS.size() - 1);
 

@@ -34,7 +34,7 @@ OPS = [
 ]
 UOPS = [operator.neg, operator.not_, operator.inv]
 
-MODULES = ["math", "marshal", "datetime", "_sre"]
+MODULES = ["math", "json", "datetime", "_sre"]
 
 
 def try_construct_dummy(cls):
