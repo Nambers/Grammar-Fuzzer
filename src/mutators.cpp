@@ -21,6 +21,8 @@ int FuzzingAST::generate_execution(ASTData &ast, BuiltinContext &ctx) {
 }
 
 int FuzzingAST::mutate_declaration(ASTData &astPtr, BuiltinContext &ctx) {
+    ctx.updateVars(astPtr.ast);
+
     AST ast = astPtr.ast;
     history_backup_str.clear();
     // avoid to mutate new generated scopes
