@@ -313,6 +313,16 @@ class ASTScope {
 
 class AST {
   public:
+    class Snapshot {
+      public:
+        size_t varsSizeBefore;
+        size_t scopeVarsSizeBefore;
+        std::vector<PropInfo> globalPropsBefore;
+        size_t globalPropsSizeBefore;
+        std::string nameCntBefore;
+    };
+
+  public:
     std::string nameCnt = "aaa"; // try to avoid keyword, like `as`
     std::vector<ASTScope> scopes = {};
     std::vector<ASTNode> declarations = {};
@@ -327,8 +337,26 @@ class AST {
     // trace the class instance for adding function purpose
     std::unordered_map<NodeID, PropInfo> classes;
 
+  public:
     // generate main block
     AST() : scopes({ASTScope()}) {}
+    // Snapshot only the fields that generate_line appends to, so we can
+    // roll back without copying the entire AST.
+    Snapshot snapshot(const ASTScope &scope) const {
+        Snapshot snap;
+        snap.varsSizeBefore = variables.size();
+        snap.scopeVarsSizeBefore = scope.variables.size();
+        snap.globalPropsBefore = classProps.at(NOT_UNDER_CLASS);
+        snap.globalPropsSizeBefore = classProps.at(NOT_UNDER_CLASS).size();
+        snap.nameCntBefore = nameCnt;
+        return snap;
+    }
+    void restore(const Snapshot &snap, ASTScope &scope) {
+        variables.resize(snap.varsSizeBefore);
+        scope.variables.resize(snap.scopeVarsSizeBefore);
+        classProps[NOT_UNDER_CLASS] = snap.globalPropsBefore;
+        nameCnt = snap.nameCntBefore;
+    }
 };
 
 class ASTData {

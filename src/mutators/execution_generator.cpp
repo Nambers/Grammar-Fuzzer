@@ -81,6 +81,25 @@ buildValueExprFromKey(const PropKey &valueKey, ScopeID scopeID, const AST &ast,
     return valueExpr;
 }
 
+// Pick index. With 25% probability, use a user-defined class
+// instance: triggers __index__ for sequences, __hash__/__eq__ for
+// dict — both are interesting dispatch paths for bugs.
+static TypeID pickIndexType(BuiltinContext &ctx, const AST &ast,
+                            TypeID containerType, ScopeID scopeID) {
+    TypeID indexType;
+    if (!ast.classes.empty() && rng() % 4 == 0) {
+        auto it = ast.classes.begin();
+        std::advance(it, rng() % ast.classes.size());
+        TypeID userTid = resolveType(it->second.name, ctx, ast, scopeID);
+        indexType = (userTid != 0) ? userTid : ctx.intID;
+    } else if (containerType == ctx.dictID) {
+        indexType = (rng() % 2 == 0 ? ctx.strID : ctx.intID);
+    } else {
+        indexType = ctx.intID;
+    }
+    return indexType;
+}
+
 extern uint32_t badState;
 
 int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
@@ -91,21 +110,14 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
     int attempts = 0;
 
     auto &scopeVars = ast.ast.scopes[scopeID].variables;
-    const auto varsSizeBefore = ast.ast.variables.size();
-    const auto scopeVarsSizeBefore = scopeVars.size();
-    auto &globalProps = ast.ast.classProps[NOT_UNDER_CLASS];
-    const auto globalPropsSizeBefore = globalProps.size();
-    const auto nameCntBefore = ast.ast.nameCnt;
+    const auto snap = ast.ast.snapshot(scope);
 
     while (state == MutationState::STATE_REROLL &&
            ++attempts < REROLL_ATTEMPTS) {
         if (attempts > 1) {
             // Hard rollback for symbol table side effects introduced during a
             // failed attempt (fresh variable names, var indices, classProps).
-            ast.ast.variables.resize(varsSizeBefore);
-            scopeVars.resize(scopeVarsSizeBefore);
-            globalProps.resize(globalPropsSizeBefore);
-            ast.ast.nameCnt = nameCntBefore;
+            ast.ast.restore(snap, ast.ast.scopes[scopeID]);
             // Keep provider indexes/distributions consistent with rolled-back
             // AST state; otherwise stale PropKey.idx can go out of bounds in
             // unfoldKey().
@@ -461,12 +473,10 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             }
             insertGlobalVar(container, globalVars);
 
-            // Pick index: int for sequences, str or int for dict
-            TypeID indexType = (containerType == ctx.dictID)
-                                   ? (rng() % 2 == 0 ? ctx.strID : ctx.intID)
-                                   : ctx.intID;
-            const auto indexKey =
-                pickTypedValueKey(ctx, scopeID, indexType, ast.ast.scopes);
+            const auto indexKey = pickTypedValueKey(
+                ctx, scopeID,
+                pickIndexType(ctx, ast.ast, containerType, scopeID),
+                ast.ast.scopes);
             if (indexKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
@@ -527,12 +537,10 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 break;
             }
 
-            // Pick index
-            TypeID indexType = (containerType == ctx.dictID)
-                                   ? (rng() % 2 == 0 ? ctx.strID : ctx.intID)
-                                   : ctx.intID;
-            const auto indexKey =
-                pickTypedValueKey(ctx, scopeID, indexType, ast.ast.scopes);
+            const auto indexKey = pickTypedValueKey(
+                ctx, scopeID,
+                pickIndexType(ctx, ast.ast, containerType, scopeID),
+                ast.ast.scopes);
             if (indexKey.empty()) {
                 state = MutationState::STATE_REROLL;
                 break;
@@ -569,10 +577,7 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
     if (state != MutationState::STATE_OK) {
         // Final failed attempt can still leave side effects in symbol tables.
         // Restore the pre-call snapshot and resync provider caches.
-        ast.ast.variables.resize(varsSizeBefore);
-        scopeVars.resize(scopeVarsSizeBefore);
-        globalProps.resize(globalPropsSizeBefore);
-        ast.ast.nameCnt = nameCntBefore;
+        ast.ast.restore(snap, ast.ast.scopes[scopeID]);
         ctx.updateVars(ast.ast);
         ++badState;
         return 1;

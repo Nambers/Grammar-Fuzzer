@@ -71,9 +71,15 @@ AST FuzzingAST::mutate_expression(AST ast, const ScopeID sid,
                 if (varInfo.type == ctx.strID) {
                     havoc(std::get<std::string>(node.fields[1].val), 50);
                 } else if (varInfo.type == ctx.intID) {
-                    static std::uniform_int_distribution<int64_t> pickNum(
+                    static std::uniform_int_distribution<int64_t> pickLarge(
                         0, INT64_MAX);
-                    node.fields[1].val = pickNum(rng);
+                    static std::uniform_int_distribution<int64_t> pickSmall(
+                        -100, 100);
+                    // 80% small (valid as container indices), 20% large
+                    static std::discrete_distribution<int> pickLargeOrSmall(
+                        {8, 2});
+                    node.fields[1].val =
+                        pickLargeOrSmall(rng) ? pickSmall(rng) : pickLarge(rng);
                 } else if (varInfo.type == ctx.floatID) {
                     static std::uniform_real_distribution<double> pickFloat(
                         -1e6, 1e6);

@@ -32,10 +32,9 @@ int FuzzingAST::mutate_declaration(ASTData &astPtr, BuiltinContext &ctx) {
         for (auto i = 0; i < NUM_MUTATE; i++) {
             AST tmpAST;
             do {
-                // TODO rn had to copy once, maybe it's able to just copy some
-                // parts
-                tmpAST = ast;
-                tmpAST = mutate_expression(tmpAST, sid, ctx);
+                // Pass ast directly by value into mutate_expression — one copy
+                // (the by-value parameter) instead of two.
+                tmpAST = mutate_expression(ast, sid, ctx);
                 ast_backup_str = nlohmann::json(tmpAST).dump();
             } while (reflectObject(tmpAST, tmpAST.scopes[sid], sid, ctx) !=
                      Exe_Result::OK);

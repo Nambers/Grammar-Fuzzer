@@ -174,7 +174,7 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
             scheduler.execFailureThreshold() / CONSECUTIVE_FAILED_RUNS_FACTOR);
         TUI::update(scheduler, scopeCnt);
         ASTNode data;
-        const AST astBeforeLine = ast.ast;
+        const auto snap = ast.ast.snapshot(scope);
         ast_backup_str = dumpReplayAST(ast.ast);
         if (generate_line(data, ast, ctx, globalVars, 0, scope) != 0) {
             // can't generate a valid line, go mutate declaration
@@ -200,7 +200,7 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
             history.push_back(data);
         } else if (ret == Exe_Result::TIMEOUT) {
             ++consecutiveFailedRuns;
-            ast.ast = astBeforeLine;
+            ast.ast.restore(snap, scope);
             // timeout
             execCtx = getInitExecutionContext();
             // re-gain the context
@@ -218,7 +218,7 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
         } else {
             // TODO don't override error handled result
             ++consecutiveFailedRuns;
-            ast.ast = astBeforeLine;
+            ast.ast.restore(snap, scope);
         }
         if (consecutiveFailedRuns >= maxConsecutiveFailedRuns) {
             INFO("breaking execution generation due to {} consecutive failed "
