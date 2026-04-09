@@ -33,7 +33,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ASTScope, declarations,
                                                 paramCnt, importedModules);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AST, nameCnt, scopes,
                                                 declarations, expressions,
-                                                classProps, variables);
+                                                classProps, variables, classes);
 
 inline void to_json(nlohmann::json &j, const ASTNodeValue &node) {
     // {"t": TYPE_INDEX, "v": VALUE}
