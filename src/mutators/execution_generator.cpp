@@ -310,10 +310,11 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 break;
             }
             // Try to find a variable of the return type
-            const auto retVarKey =
-                ctx.pickRandomVar(scopeID, 0, ctx.pickValueKind(),
-                                  ast.ast.scopes); // disrespect original return
-                                                   // type to check if crash
+            const auto retVarKey = ctx.pickRandomVar(
+                scopeID, pickMaybeObjectType(ctx, scope.retType),
+                ctx.pickValueKind(),
+                ast.ast.scopes); // disrespect original return
+                                 // type to check if crash
             if (!retVarKey.empty()) {
                 const auto retVar = buildValueExprFromKey(
                     retVarKey, scopeID, ast.ast, ctx, globalVars);

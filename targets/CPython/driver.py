@@ -48,22 +48,36 @@ BLACKLIST_DUNDERS = {
     "__weakref__",
     "__subclasshook__",
     "__init_subclass__",
-    "__class_getitem__",
     "__class__",
-    "__del__",
     "__getattribute__",
-    "__setattr__",
-    "__delattr__",
     "__reduce__",
     "__reduce_ex__",
     "__sizeof__",
     "__dir__",
-    "__format__",
     "__abstractmethods__",
     "__type_params__",
     "__firstlineno__",
     "__static_attributes__",
 }
+
+# Protocol methods that any Python class can define but are absent from object.__dict__
+# because CPython's object type leaves the corresponding C slots NULL (e.g. nb_index,
+# sq_length, mp_subscript).  We inject them into object's method list so the fuzzer
+# can generate subclass overrides for dispatch-sensitive paths like __index__ / __getitem__.
+PROTOCOL_SUPPLEMENT = [
+    {"name": "__index__",    "paramTypes": [],                    "returnType": "int"},
+    {"name": "__len__",      "paramTypes": [],                    "returnType": "int"},
+    {"name": "__bool__",     "paramTypes": [],                    "returnType": "bool"},
+    {"name": "__contains__", "paramTypes": ["object"],            "returnType": "bool"},
+    {"name": "__missing__",  "paramTypes": ["object"],            "returnType": "object"},
+    {"name": "__getitem__",  "paramTypes": ["object"],            "returnType": "object"},
+    {"name": "__setitem__",  "paramTypes": ["object", "object"],  "returnType": "object"},
+    {"name": "__delitem__",  "paramTypes": ["object"],            "returnType": "object"},
+    {"name": "__getattr__",  "paramTypes": ["object"],            "returnType": "object"},
+    {"name": "__iter__",     "paramTypes": [],                    "returnType": "object"},
+    {"name": "__next__",     "paramTypes": [],                    "returnType": "object"},
+    {"name": "__del__",      "paramTypes": [],                    "returnType": "object"},
+]
 
 
 def is_blacklisted(name: str) -> bool:
@@ -213,6 +227,23 @@ def collect_class_methods(cls, qualified_name=None):
                     "isCallable": True,
                 }
             )
+
+    # Inject protocol methods into object that CPython leaves unimplemented
+    # (nb_index, sq_length, etc. slots are NULL on object, so they never appear
+    # in object.__dict__ and cannot be discovered by normal iteration above).
+    if cls is object:
+        existing = {m["name"] for m in methods[clsname]}
+        for proto in PROTOCOL_SUPPLEMENT:
+            if proto["name"] not in existing:
+                methods[clsname].append({
+                    "name": proto["name"],
+                    "extra": {
+                        "paramTypes": proto["paramTypes"],
+                        "selfType": clsname,
+                        "returnType": proto["returnType"],
+                    },
+                    "isCallable": True,
+                })
 
     return methods
 
