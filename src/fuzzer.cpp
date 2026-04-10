@@ -26,7 +26,6 @@
 
 using namespace FuzzingAST;
 extern "C" void __sanitizer_set_death_callback(void (*)(void));
-extern std::vector<std::string> FuzzingAST::cacheCorpus;
 
 std::string ast_backup_str;
 std::string history_backup_str;
@@ -236,7 +235,7 @@ static std::vector<ASTNode> testInputStream(ASTData &ast,
 void FuzzingAST::fuzzerDriver() {
     // percentage of start from new corpus instead of fallback to one
     static std::bernoulli_distribution startOver(0.1);
-    cacheCorpus.reserve(MAX_CACHE_SIZE);
+    cacheCorpus.reserve(MAX_CACHE_SIZE + 10);
     loadBuiltinsFuncs(scheduler.ctx);
     initPrimitiveTypes(scheduler.ctx);
     {
@@ -257,7 +256,6 @@ void FuzzingAST::fuzzerDriver() {
     scheduler.ctx.initFromBuiltins();
     scheduler.ctx.updateVars(scheduler.corpus[scheduler.idx].ast);
     newEdgeCnt = 0; // reset edge count
-    cacheCorpus.reserve(MAX_CACHE_SIZE);
     TUI::initTUI();
     while (true) {
         if (scheduler.corpus.empty()) {
@@ -293,7 +291,8 @@ void FuzzingAST::fuzzerDriver() {
                     break;
                 }
 
-                cacheCorpus.emplace_back(nlohmann::json(newData.ast).dump());
+                cacheCorpus.emplace_back(TUI::getElapsedMilliseconds(),
+                                         nlohmann::json(newData.ast).dump());
                 if (cacheCorpus.size() > MAX_CACHE_SIZE) {
                     fuzzerEmitCacheCorpus();
                     cacheCorpus.clear();

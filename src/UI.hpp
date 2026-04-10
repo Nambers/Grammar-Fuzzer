@@ -14,6 +14,8 @@ void update(const FuzzSchedulerState &state, size_t currentASTSize);
 void initTUI();
 void finalizeTUI();
 void writeTUI(const FuzzSchedulerState &state, size_t currentASTSize);
+int64_t getElapsedMilliseconds();
+int64_t getElapsedSeconds();
 } // namespace TUI
 } // namespace FuzzingAST
 #endif // UI_HPP

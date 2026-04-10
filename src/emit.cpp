@@ -10,14 +10,17 @@
 namespace fs = std::filesystem;
 using namespace FuzzingAST;
 
-std::vector<std::string> FuzzingAST::cacheCorpus;
+std::vector<std::tuple<int64_t, std::string>> FuzzingAST::cacheCorpus;
 
 // Generate unique filename using timestamp + counter
-std::string FuzzingAST::make_unique_filename(int counter) {
-    auto now = std::chrono::system_clock::now().time_since_epoch();
-    auto millis =
-        std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-    return std::to_string(millis) + "_" + std::to_string(counter) + ".json";
+static std::string make_unique_filename(int64_t elapsed_seconds,
+                                        bool lastEqual = false) {
+    static unsigned int counter = 0;
+    if (lastEqual == false) {
+        counter = 0;
+    }
+    return std::to_string(elapsed_seconds) + "_" + std::to_string(counter++) +
+           ".json";
 }
 
 void FuzzingAST::fuzzerLoadCorpus(const std::string &savedPath,
@@ -45,16 +48,20 @@ void FuzzingAST::fuzzerLoadCorpus(const std::string &savedPath,
 void FuzzingAST::fuzzerEmitCacheCorpus() {
     fs::create_directories("corpus/tmp");
     fs::create_directories("corpus/queue");
+    int64_t lastSeconds = -1;
 
     for (size_t i = 0; i < FuzzingAST::cacheCorpus.size(); ++i) {
-        std::string filename = make_unique_filename(i);
+        int64_t elapsed_seconds = std::get<0>(FuzzingAST::cacheCorpus[i]);
+        std::string filename = make_unique_filename(
+            elapsed_seconds, lastSeconds == elapsed_seconds);
+        lastSeconds = elapsed_seconds;
         fs::path tmpPath = "corpus/tmp/" + filename;
         fs::path queuePath = "corpus/queue/" + filename;
 
         // 1. Write to temp
         {
             std::ofstream out(tmpPath);
-            out << FuzzingAST::cacheCorpus[i];
+            out << std::get<1>(FuzzingAST::cacheCorpus[i]);
         }
 
         // 2. Atomically move

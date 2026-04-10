@@ -156,12 +156,25 @@ void FuzzingAST::TUI::finalizeTUI() {
     }
 }
 
+static std::chrono::nanoseconds getElapsedTime() {
+    auto now = std::chrono::steady_clock::now();
+    return now - start_time;
+}
+
+int64_t FuzzingAST::TUI::getElapsedMilliseconds() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               getElapsedTime())
+        .count();
+}
+
+int64_t FuzzingAST::TUI::getElapsedSeconds() {
+    return std::chrono::duration_cast<std::chrono::seconds>(getElapsedTime())
+        .count();
+}
+
 void FuzzingAST::TUI::writeTUI(const FuzzingAST::FuzzSchedulerState &state,
                                size_t currentASTSize) {
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = now - start_time;
-    auto secs_total =
-        std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+    auto secs_total = getElapsedSeconds();
     int hours = static_cast<int>(secs_total / 3600);
     int minutes = static_cast<int>((secs_total % 3600) / 60);
     int seconds = static_cast<int>(secs_total % 60);
