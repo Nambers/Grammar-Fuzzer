@@ -345,12 +345,14 @@ class AST {
     }
     // Snapshot only the fields that generate_line appends to, so we can
     // roll back without copying the entire AST.
-    Snapshot snapshot(const ASTScope &scope) const {
+    // side-effect: it will create NOT_UNDER_CLASS prop in classProps if not
+    // exist
+    Snapshot snapshot(const ASTScope &scope) {
         Snapshot snap;
         snap.varsSizeBefore = variables.size();
         snap.scopeVarsSizeBefore = scope.variables.size();
-        snap.globalPropsBefore = classProps.at(NOT_UNDER_CLASS);
-        snap.globalPropsSizeBefore = classProps.at(NOT_UNDER_CLASS).size();
+        snap.globalPropsBefore = classProps[NOT_UNDER_CLASS];
+        snap.globalPropsSizeBefore = classProps[NOT_UNDER_CLASS].size();
         snap.nameCntBefore = nameCnt;
         return snap;
     }
