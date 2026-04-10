@@ -11,15 +11,15 @@ static std::uniform_int_distribution<int> pickBinaryOp(0,
 static std::uniform_int_distribution<int> pickUnaryOp(0, UNARY_OPS.size() - 1);
 
 constexpr static std::array PICK_EXEC_WEIGHT = {
-    10, // GetProp
-    7,  // SetProp
-    20, // Call
+    12, // GetProp
+    13, // SetProp
+    14, // Call
     2,  // Return
-    3,  // BinaryOp
-    2,  // UnaryOp
-    7,  // NewInstance
-    8,  // SetItem
-    9,  // GetItem
+    2,  // BinaryOp
+    1,  // UnaryOp
+    9,  // NewInstance
+    15, // SetItem
+    15, // GetItem
 };
 
 static_assert(PICK_EXEC_WEIGHT.size() ==

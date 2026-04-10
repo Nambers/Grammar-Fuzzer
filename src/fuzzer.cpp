@@ -79,6 +79,7 @@ static void crash_handler() {
     WRITE_STDERR(curr_node_backup_str.c_str());
     fuzzerEmitCacheCorpus();
     int cnt = 0;
+    scheduler.corpus.pop_front(); // the first one is always blank
     for (const auto &data : scheduler.corpus) {
         std::ofstream out("corpus/saved/" + std::to_string(cnt++) + ".json");
         out << nlohmann::json(data.ast).dump();
@@ -117,20 +118,24 @@ void myTerminateHandler() {
 }
 
 void FuzzingAST::FuzzerInitialize(int *argc, char ***argv) {
-    if (argc != NULL && argv != NULL) {
-        if (*argc >= 2 && std::strcmp((*argv)[1], "-load-saved") == 0) {
-            std::string savedPath = "./corpus/saved";
-            if (*argc == 3 && (*argv)[2] != nullptr) {
-                savedPath = std::string((*argv)[2]);
-            }
-            INFO("Loading saved corpus from: {}", savedPath);
-            fuzzerLoadCorpus(savedPath, scheduler.corpus);
-            // the first one is always blank
-            scheduler.corpus.insert(scheduler.corpus.begin(), {});
-            scheduler.idx =
-                scheduler.corpus.empty() ? 0 : scheduler.corpus.size() - 1;
+    if (argc != NULL && argv != NULL && *argc >= 2 &&
+        std::strcmp((*argv)[1], "-load-saved") == 0) {
+        std::string savedPath = "./corpus/saved";
+        if (*argc == 3 && (*argv)[2] != nullptr) {
+            savedPath = std::string((*argv)[2]);
         }
+        INFO("Loading saved corpus from: {}", savedPath);
+        fuzzerLoadCorpus(savedPath, scheduler.corpus);
+        // the first one is always blank
+        scheduler.corpus.emplace_front();
+    } else {
+        scheduler.corpus.clear();
+        scheduler.corpus.emplace_front(); // blank one for fallback
     }
+    std::cout << "Initial corpus size: " << scheduler.corpus.size()
+              << std::endl;
+    // first pick the last corpus
+    scheduler.idx = scheduler.corpus.size() - 1;
     initialize(argc, argv);
     // override potential SIGINT handler in language interpreter
     signal(SIGINT, sigint_handler);
@@ -240,11 +245,14 @@ void FuzzingAST::fuzzerDriver() {
     initPrimitiveTypes(scheduler.ctx);
     {
         ASTData data;
-        if (scheduler.corpus.empty()) {
+        if (scheduler.corpus.size() == 1 &&
+            scheduler.corpus[0].ast.empty()) { // only blank one, need to init
             dummyAST(data, scheduler.ctx);
             scheduler.corpus.push_back(data);
-            scheduler.idx = 0;
+            scheduler.idx = 1;
         } else {
+            std::cout << "Testing initial corpus entry at idx=" << scheduler.idx
+                      << "...\n";
             data = scheduler.corpus[scheduler.idx];
         }
         // dummy check
@@ -252,7 +260,10 @@ void FuzzingAST::fuzzerDriver() {
             PANIC("Initial AST is not valid.");
         }
     }
+    // corpusSize always > 0
     corpusSize = scheduler.corpus.size();
+    static std::uniform_int_distribution<unsigned int> pickCorpus(
+        0, corpusSize - 1);
     scheduler.ctx.initFromBuiltins();
     scheduler.ctx.updateVars(scheduler.corpus[scheduler.idx].ast);
     newEdgeCnt = 0; // reset edge count
@@ -310,7 +321,8 @@ void FuzzingAST::fuzzerDriver() {
             newEdgeCnt = 0;
             // if (corpusSize > 0) {
             // randomly fallback to one of all, or startOver from blank
-            scheduler.idx = rng() % corpusSize;
+            // scheduler.idx = rng() % corpusSize;
+            scheduler.idx = pickCorpus(rng);
             if (startOver(rng))
                 scheduler.idx = 0;
 
@@ -346,9 +358,11 @@ void FuzzingAST::fuzzerDriver() {
             // if current newEdgeCnt is 0, newData replaced the current one
             if (newEdgeCnt > cacheNewEdgeCnt) {
                 scheduler.corpus.push_back(newData);
+                pickCorpus =
+                    std::uniform_int_distribution<unsigned int>(0, corpusSize);
+                scheduler.idx = corpusSize;
                 ++corpusSize;
-                scheduler.idx = corpusSize - 1;
-            } else
+            } else if (scheduler.idx != 0)
                 scheduler.corpus.at(scheduler.idx) = newData;
             newEdgeCnt = 0; // reset edge count for declaration change
             break;

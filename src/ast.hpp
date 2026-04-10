@@ -340,6 +340,9 @@ class AST {
   public:
     // generate main block
     AST() : scopes({ASTScope()}) {}
+    inline bool empty() const {
+        return declarations.empty() && expressions.empty();
+    }
     // Snapshot only the fields that generate_line appends to, so we can
     // roll back without copying the entire AST.
     Snapshot snapshot(const ASTScope &scope) const {
