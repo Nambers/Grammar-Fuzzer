@@ -11,44 +11,47 @@ import os
 import sys
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 
 # ── academia rcParams ────────────────────────────────────────────────────────
-plt.rcParams.update({
-    # figure
-    "figure.figsize":       (6.5, 3.8),
-    "figure.dpi":           200,
-    # axes
-    "axes.linewidth":       0.8,
-    "axes.spines.top":      False,
-    "axes.spines.right":    False,
-    "axes.grid":            True,
-    "axes.axisbelow":       True,
-    # grid
-    "grid.color":           "#cccccc",
-    "grid.linewidth":       0.5,
-    "grid.linestyle":       "--",
-    # lines
-    "lines.linewidth":      1.6,
-    "lines.markersize":     3,
-    # font
-    "font.family":          "serif",
-    "font.size":            11,
-    "axes.labelsize":       12,
-    "axes.titlesize":       12,
-    "legend.fontsize":      10,
-    "legend.framealpha":    0.9,
-    "legend.edgecolor":     "#aaaaaa",
-    # ticks
-    "xtick.direction":      "in",
-    "ytick.direction":      "in",
-    "xtick.major.size":     3.5,
-    "ytick.major.size":     3.5,
-    "xtick.labelsize":      10,
-    "ytick.labelsize":      10,
-})
+plt.rcParams.update(
+    {
+        # figure
+        "figure.figsize": (15.0, 5.0),
+        "figure.dpi": 200,
+        # axes
+        "axes.linewidth": 0.8,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "axes.axisbelow": True,
+        # grid
+        "grid.color": "#cccccc",
+        "grid.linewidth": 0.5,
+        "grid.linestyle": "--",
+        # lines
+        "lines.linewidth": 1.6,
+        "lines.markersize": 3,
+        # font
+        "font.family": "serif",
+        "font.size": 11,
+        "axes.labelsize": 12,
+        "axes.titlesize": 12,
+        "legend.fontsize": 10,
+        "legend.framealpha": 0.9,
+        "legend.edgecolor": "#aaaaaa",
+        # ticks
+        "xtick.direction": "in",
+        "ytick.direction": "in",
+        "xtick.major.size": 3.5,
+        "ytick.major.size": 3.5,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+    }
+)
 
 # get target name from current folder
 TARGET = os.path.basename(os.getcwd()).split("_")[1]
@@ -73,30 +76,30 @@ n = len(ms_vals)
 
 # ── time axis: auto-scale ms → human unit ────────────────────────────────────
 max_ms = max(ms_vals)
-if max_ms < 90_000:            # < 1.5 min  → seconds
-    t      = [x / 1_000        for x in ms_vals]
+if max_ms < 90_000:  # < 1.5 min  → seconds
+    t = [x / 1_000 for x in ms_vals]
     xlabel = "Time (s)"
-elif max_ms < 5_400_000:       # < 1.5 hr   → minutes
-    t      = [x / 60_000       for x in ms_vals]
+elif max_ms < 5_400_000:  # < 1.5 hr   → minutes
+    t = [x / 60_000 for x in ms_vals]
     xlabel = "Time (min)"
-else:                          # ≥ 1.5 hr   → hours
-    t      = [x / 3_600_000    for x in ms_vals]
+else:  # ≥ 1.5 hr   → hours
+    t = [x / 3_600_000 for x in ms_vals]
     xlabel = "Time (h)"
 
 # ── marker density: ≤ 15 markers per line regardless of point count ──────────
 every = max(1, n // 15)
 
 # ── colorblind-safe palette (Paul Tol's bright) ───────────────────────────────
-C_FUNC   = "#4477AA"   # blue
-C_LINE   = "#EE6677"   # red
-C_BRANCH = "#228833"   # green
+C_FUNC = "#4477AA"  # blue
+C_LINE = "#EE6677"  # red
+C_BRANCH = "#228833"  # green
 
 # ── plot ─────────────────────────────────────────────────────────────────────
 fig, ax = plt.subplots()
 
-ax.plot(t, func_pct,   color=C_FUNC,   marker="o", markevery=every, label="Function")
-ax.plot(t, line_pct,   color=C_LINE,   marker="s", markevery=every, label="Line")
-ax.plot(t, branch_pct, color=C_BRANCH, marker="^", markevery=every, label="Branch")
+ax.plot(t, func_pct, color=C_FUNC, marker="o", label="Function")
+ax.plot(t, line_pct, color=C_LINE, marker="s", label="Line")
+ax.plot(t, branch_pct, color=C_BRANCH, marker="^", label="Branch")
 
 # y-axis: start just below the minimum to show growth clearly
 all_vals = func_pct + line_pct + branch_pct
