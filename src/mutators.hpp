@@ -11,6 +11,9 @@ namespace FuzzingAST {
 
 enum class MutationState { STATE_OK = 0, STATE_REROLL };
 
+MutationState generate_return(ASTNode &curr, ASTData &ast, BuiltinContext &ctx,
+                              std::unordered_set<std::string> &globalVars,
+                              ScopeID scopeID, const ASTScope &scope);
 int generate_execution_block(ASTData &ast, const ScopeID &scope,
                              BuiltinContext &ctx);
 AST mutate_expression(AST ast, const ScopeID scopeID, BuiltinContext &ctx);

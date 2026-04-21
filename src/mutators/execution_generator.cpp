@@ -102,6 +102,41 @@ static TypeID pickIndexType(BuiltinContext &ctx, const AST &ast,
 
 extern uint32_t badState;
 
+MutationState
+FuzzingAST::generate_return(ASTNode &curr, ASTData &ast, BuiltinContext &ctx,
+                            std::unordered_set<std::string> &globalVars,
+                            ScopeID scopeID, const ASTScope &scope) {
+    curr.kind = ASTNodeKind::Return;
+    curr.scope = scopeID;
+    curr.fields.clear();
+    // Try to find a variable of the return type
+    const auto retVarKey = ctx.pickRandomVar(
+        scopeID, pickMaybeObjectType(ctx, scope.retType), ctx.pickValueKind(),
+        ast.ast.scopes); // disrespect original return
+                         // type to check if crash
+    if (!retVarKey.empty()) {
+        const auto retVar =
+            buildValueExprFromKey(retVarKey, scopeID, ast.ast, ctx, globalVars);
+        if (!retVar) {
+            return MutationState::STATE_REROLL;
+        }
+        curr.fields = {{*retVar}};
+    } else {
+        // Fall back to literal return for common types
+        if (scope.retType == ctx.intID) {
+            static std::uniform_int_distribution<int64_t> pickRet(-255, 255);
+            curr.fields = {{pickRet(rng)}};
+        } else if (scope.retType == ctx.boolID) {
+            curr.fields = {{(rng() % 2) == 0}};
+        } else if (scope.retType == ctx.strID) {
+            curr.fields = {{std::string("\"\"")}};
+        } else {
+            return MutationState::STATE_REROLL;
+        }
+    }
+    return MutationState::STATE_OK;
+}
+
 int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                               std::unordered_set<std::string> &globalVars,
                               ScopeID scopeID, const ASTScope &scope) {
@@ -613,6 +648,18 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
         if (node.kind == ASTNodeKind::Return) {
             scope.retNodeID = nodeId;
             --i;
+        }
+    }
+    // ensure return expression exists for every function
+    if (scope.retType != -1 && scope.retNodeID == -1) {
+        const auto nodeId = ast.ast.expressions.size();
+        ast.ast.expressions.emplace_back();
+        ASTNode node;
+        if (generate_return(node, ast, ctx, globalVars, scopeID, scope) !=
+            MutationState::STATE_OK) {
+            ast.ast.expressions.pop_back();
+        } else {
+            scope.retNodeID = nodeId;
         }
     }
     if (scopeID != 0 && !globalVars.empty()) {
