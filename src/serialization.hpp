@@ -30,7 +30,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ASTNode, kind, fields, scope);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ASTScope, declarations,
                                                 expressions, variables, types,
                                                 inheritedTypes, parent, retType,
-                                                paramCnt, importedModules);
+                                                retNodeID, paramCnt,
+                                                importedModules);
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AST, nameCnt, scopes,
                                                 declarations, expressions,
                                                 classProps, variables, classes);
