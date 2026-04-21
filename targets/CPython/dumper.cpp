@@ -240,14 +240,20 @@ void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
                                const AST &ast, int indentLevel) {
     if (sid == EMPTY_SCOPE)
         return;
+    out << std::string(indentLevel * 4, ' ');
     if (!isValidID(sid, ast.scopes)) {
-        out << std::string(indentLevel * 4, ' ') << "# invalid scope id " << sid
-            << "\n";
+        out << "# invalid scope id " << sid << "\n";
         return;
     }
-    out << std::string(indentLevel * 4, ' ') << "# scope " << sid << '\n';
+    out << "# scope " << sid << '\n';
     const ASTScope &scope = ast.scopes[sid];
     bool empty = true;
+    if (sid > 0) {
+        // inside function, wrap with try-except
+        out << std::string(indentLevel * 4, ' ') << "try:\n";
+        ++indentLevel;
+    }
+    const std::string ind(indentLevel * 4, ' ');
 
     if (scope.globalRefID != -1 &&
         isValidID(scope.globalRefID, ast.declarations)) {
@@ -255,13 +261,11 @@ void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
                      indentLevel);
         empty = false;
     } else if (scope.globalRefID != -1) {
-        out << std::string(indentLevel * 4, ' ') << "# invalid globalRefID "
-            << scope.globalRefID << '\n';
+        out << ind << "# invalid globalRefID " << scope.globalRefID << '\n';
     }
     for (NodeID id : scope.declarations) {
         if (!isValidID(id, ast.declarations)) {
-            out << std::string(indentLevel * 4, ' ')
-                << "# invalid declaration id " << id << '\n';
+            out << ind << "# invalid declaration id " << id << '\n';
             continue;
         }
         const auto &decl = ast.declarations[id];
@@ -273,23 +277,28 @@ void FuzzingAST::scopeToPython(std::ostringstream &out, ScopeID sid,
     }
     for (NodeID id : scope.expressions) {
         if (!isValidID(id, ast.expressions)) {
-            out << std::string(indentLevel * 4, ' ')
-                << "# invalid expression id " << id << '\n';
+            out << ind << "# invalid expression id " << id << '\n';
             continue;
         }
         nodeToPython(out, ast.expressions[id], ast, indentLevel);
         empty = false;
     }
-    // return at the end
-    if (scope.retNodeID != -1 && isValidID(scope.retNodeID, ast.expressions)) {
-        const auto &retNode = ast.expressions[scope.retNodeID];
-        nodeToPython(out, retNode, ast, indentLevel);
-        empty = false;
-    } else if (scope.retNodeID != -1) {
-        out << std::string(indentLevel * 4, ' ') << "# invalid retNodeID "
-            << scope.retNodeID << '\n';
-    }
-
     if (empty)
-        out << std::string(indentLevel * 4, ' ') << "pass\n";
+        out << ind << "pass\n";
+
+    if (sid > 0) {
+        // out of try-except block
+        --indentLevel;
+        out << std::string(indentLevel * 4, ' ') << "except:pass\n";
+        // return at the end
+        if (scope.retNodeID != -1) {
+            if (isValidID(scope.retNodeID, ast.expressions)) {
+                const auto &retNode = ast.expressions[scope.retNodeID];
+                nodeToPython(out, retNode, ast, indentLevel);
+            } else {
+                out << std::string(indentLevel * 4, ' ')
+                    << "# invalid retNodeID " << scope.retNodeID << '\n';
+            }
+        }
+    }
 }
