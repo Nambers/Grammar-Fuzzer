@@ -15,6 +15,10 @@
 !build_quickjs
 !build_quickjs/**
 
+
+!experiements
+!experiements/**
+
 !readme.md
 !cov_map.py
 !cov_time.py
