@@ -19,6 +19,7 @@ using ModuleID = int;
 using VarID = int;
 constexpr ModuleID NO_MODULE = -1;
 constexpr ModuleID BUILTIN_MODULE_ID = 0;
+constexpr ModuleID TEMP_EXPR_MODULE_ID = -2;
 
 constexpr ScopeID EMPTY_SCOPE = -1;
 
@@ -317,8 +318,9 @@ class AST {
       public:
         size_t varsSizeBefore;
         size_t scopeVarsSizeBefore;
-        std::vector<PropInfo> globalPropsBefore;
-        size_t globalPropsSizeBefore;
+        std::vector<PropInfo> classPropBefore;
+        size_t classPropsSizeBefore;
+        size_t exprPropsSizeBefore;
         std::string nameCntBefore;
     };
 
@@ -334,6 +336,9 @@ class AST {
     // std::vector<PropInfo> functions;
     // TypeID -> -1 means not under class
     std::unordered_map<TypeID, std::vector<PropInfo>> classProps;
+    // classProps for temp generated expressions during execution generation
+    // it will not store in corpus
+    std::vector<PropInfo> tempExprProps;
     // trace the class instance for adding function purpose
     std::unordered_map<NodeID, PropInfo> classes;
 
@@ -351,15 +356,17 @@ class AST {
         Snapshot snap;
         snap.varsSizeBefore = variables.size();
         snap.scopeVarsSizeBefore = scope.variables.size();
-        snap.globalPropsBefore = classProps[NOT_UNDER_CLASS];
-        snap.globalPropsSizeBefore = classProps[NOT_UNDER_CLASS].size();
+        snap.classPropBefore = classProps[NOT_UNDER_CLASS];
+        snap.classPropsSizeBefore = classProps[NOT_UNDER_CLASS].size();
+        snap.exprPropsSizeBefore = tempExprProps.size();
         snap.nameCntBefore = nameCnt;
         return snap;
     }
     void restore(const Snapshot &snap, ASTScope &scope) {
         variables.resize(snap.varsSizeBefore);
         scope.variables.resize(snap.scopeVarsSizeBefore);
-        classProps[NOT_UNDER_CLASS] = snap.globalPropsBefore;
+        classProps[NOT_UNDER_CLASS] = snap.classPropBefore;
+        tempExprProps.resize(snap.exprPropsSizeBefore);
         nameCnt = snap.nameCntBefore;
     }
 };
@@ -388,6 +395,8 @@ inline const PropInfo &unfoldKey(const PropKey &key, const AST &ast,
                                  const BuiltinContext &ctx) {
     if (key.moduleID == BUILTIN_MODULE_ID)
         return ctx.builtinsProps.at(key.parentType).at(key.idx);
+    if (key.moduleID == TEMP_EXPR_MODULE_ID)
+        return ast.tempExprProps.at(key.idx);
     if (key.moduleID > 0)
         return ctx.modulesProps.at(key.moduleID).at(key.parentType).at(key.idx);
     return ast.classProps.at(key.parentType).at(key.idx);
@@ -396,6 +405,8 @@ inline const PropInfo &unfoldKey(const PropKey &key, const AST &ast,
 inline PropInfo &unfoldKey(const PropKey &key, AST &ast, BuiltinContext &ctx) {
     if (key.moduleID == BUILTIN_MODULE_ID)
         return ctx.builtinsProps.at(key.parentType).at(key.idx);
+    if (key.moduleID == TEMP_EXPR_MODULE_ID)
+        return ast.tempExprProps.at(key.idx);
     if (key.moduleID > 0)
         return ctx.modulesProps.at(key.moduleID).at(key.parentType).at(key.idx);
     return ast.classProps.at(key.parentType).at(key.idx);

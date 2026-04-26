@@ -1,8 +1,8 @@
-#include "target.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "dumper.hpp"
 #include "log.hpp"
+#include "target.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
@@ -499,45 +499,49 @@ std::unique_ptr<ExecutionContext> FuzzingAST::getInitExecutionContext() {
 }
 
 // -- Update variable types after execution -----------------------------------
+static inline void _update(ASTData &ast, BuiltinContext &ctx, lua_State *L,
+                           PropInfo &prop) {
+    lua_getglobal(L, prop.name.c_str());
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return;
+    }
+
+    const char *typeName = nullptr;
+    int lt = lua_type(L, -1);
+    switch (lt) {
+    case LUA_TSTRING:
+        typeName = "string";
+        break;
+    case LUA_TNUMBER:
+        typeName = "number";
+        break;
+    case LUA_TBOOLEAN:
+        typeName = "boolean";
+        break;
+    case LUA_TTABLE:
+        typeName = "table";
+        break;
+    default:
+        break;
+    }
+
+    if (typeName) {
+        TypeID tid = resolveType(typeName, ctx, ast.ast, 0);
+        prop.type = tid;
+    }
+    lua_pop(L, 1);
+}
 void FuzzingAST::updateTypes(ASTData &ast, BuiltinContext &ctx,
                              std::unique_ptr<ExecutionContext> &excCtx) {
     lua_State *L = reinterpret_cast<lua_State *>(excCtx->getContext());
 
     // Only query globals for variables we actually track — avoid iterating
     // the entire Lua global table (string, math, io, os, etc.).
-    for (VarID varID : ast.ast.scopes[0].variables) {
-        auto &varInfo = unfoldKey(ast.ast.variables.at(varID), ast.ast, ctx);
-        const std::string &name = varInfo.name;
-
-        lua_getglobal(L, name.c_str());
-        if (lua_isnil(L, -1)) {
-            lua_pop(L, 1);
-            continue;
-        }
-
-        const char *typeName = nullptr;
-        int lt = lua_type(L, -1);
-        switch (lt) {
-        case LUA_TSTRING:
-            typeName = "string";
-            break;
-        case LUA_TNUMBER:
-            typeName = "number";
-            break;
-        case LUA_TBOOLEAN:
-            typeName = "boolean";
-            break;
-        case LUA_TTABLE:
-            typeName = "table";
-            break;
-        default:
-            break;
-        }
-
-        if (typeName) {
-            TypeID tid = resolveType(typeName, ctx, ast.ast, 0);
-            varInfo.type = tid;
-        }
-        lua_pop(L, 1);
+    for (auto &prop : ast.ast.classProps[NOT_UNDER_CLASS]) {
+        _update(ast, ctx, L, prop);
+    }
+    for (auto &prop : ast.ast.tempExprProps) {
+        _update(ast, ctx, L, prop);
     }
 }

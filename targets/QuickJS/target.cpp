@@ -301,6 +301,37 @@ std::unique_ptr<ExecutionContext> FuzzingAST::getInitExecutionContext() {
     return std::make_unique<QuickJSExecutionContext>(std::move(handle));
 }
 
+static inline void _update(ASTData &ast, BuiltinContext &ctx, JSValue &global,
+                           JSContext *jctx, PropInfo &prop) {
+    JSValue val = JS_GetPropertyStr(jctx, global, prop.name.c_str());
+    if (JS_IsUndefined(val)) {
+        JS_FreeValue(jctx, val);
+        return;
+    }
+
+    const char *typeName = nullptr;
+    if (JS_IsBool(val))
+        typeName = "boolean";
+    else if (JS_IsNumber(val))
+        typeName = "number";
+    else if (JS_IsString(val))
+        typeName = "string";
+    else if (JS_IsFunction(jctx, val))
+        typeName = "function";
+    else if (JS_IsObject(val)) {
+        if (JS_IsArray(jctx, val))
+            typeName = "array";
+        else
+            typeName = "object";
+    }
+
+    if (typeName) {
+        TypeID tid = resolveType(typeName, ctx, ast.ast, 0);
+        prop.type = tid;
+    }
+    JS_FreeValue(jctx, val);
+}
+
 void FuzzingAST::updateTypes(ASTData &ast, BuiltinContext &ctx,
                              std::unique_ptr<ExecutionContext> &excCtx) {
     auto *h = reinterpret_cast<QuickJSHandle *>(excCtx->getContext());
@@ -308,39 +339,11 @@ void FuzzingAST::updateTypes(ASTData &ast, BuiltinContext &ctx,
 
     JSValue global = JS_GetGlobalObject(jctx);
 
-    for (VarID varID : ast.ast.scopes[0].variables) {
-        auto &varInfo = unfoldKey(ast.ast.variables.at(varID), ast.ast, ctx);
-        const std::string &name = varInfo.name;
-
-        JSValue val = JS_GetPropertyStr(jctx, global, name.c_str());
-        if (JS_IsUndefined(val)) {
-            JS_FreeValue(jctx, val);
-            continue;
-        }
-
-        const char *typeName = nullptr;
-        if (JS_IsBool(val))
-            typeName = "boolean";
-        else if (JS_IsNumber(val))
-            typeName = "number";
-        else if (JS_IsString(val))
-            typeName = "string";
-        else if (JS_IsFunction(jctx, val))
-            typeName = "function";
-        else if (JS_IsObject(val)) {
-            if (JS_IsArray(jctx, val))
-                typeName = "array";
-            else
-                typeName = "object";
-        }
-
-        if (typeName) {
-            TypeID tid = resolveType(typeName, ctx, ast.ast, 0);
-            if (tid >= 0)
-                varInfo.type = tid;
-        }
-
-        JS_FreeValue(jctx, val);
+    for (auto &prop : ast.ast.classProps[NOT_UNDER_CLASS]) {
+        _update(ast, ctx, global, jctx, prop);
+    }
+    for (auto &prop : ast.ast.tempExprProps) {
+        _update(ast, ctx, global, jctx, prop);
     }
 
     JS_FreeValue(jctx, global);

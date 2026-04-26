@@ -1,8 +1,8 @@
-#include "target.hpp"
 #include "ast.hpp"
 #include "driver.hpp"
 #include "dumper.hpp"
 #include "log.hpp"
+#include "target.hpp"
 #include <Python.h> // Python.h should be first to include
 #include <atomic>
 #include <chrono>
@@ -821,9 +821,15 @@ void FuzzingAST::updateTypes(ASTData &ast, BuiltinContext &ctx,
                      varName);
             }
             // update type
-            for (VarID varID : ast.ast.scopes[0].variables) {
+            for (auto varID : ast.ast.scopes[0].variables) {
                 auto &varInfo =
                     unfoldKey(ast.ast.variables.at(varID), ast.ast, ctx);
+                if (varInfo.name == varName) {
+                    varInfo.type = typeID;
+                    continue;
+                }
+            }
+            for (auto &varInfo : ast.ast.tempExprProps) {
                 if (varInfo.name == varName) {
                     varInfo.type = typeID;
                     continue;

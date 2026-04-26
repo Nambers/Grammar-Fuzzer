@@ -255,16 +255,8 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
             }
             globalVars.insert(ast.ast.nameCnt);
             // Register the new instance variable in the AST type system.
-            {
-                auto &scope_ = ast.ast.scopes[scopeID];
-                scope_.variables.push_back(
-                    static_cast<VarID>(ast.ast.variables.size()));
-                ast.ast.variables.emplace_back(
-                    NO_MODULE, ast.ast.classProps[NOT_UNDER_CLASS].size(),
-                    NOT_UNDER_CLASS);
-                ast.ast.classProps[NOT_UNDER_CLASS].emplace_back(
-                    tid, scopeID, ast.ast.nameCnt, false);
-            }
+            ast.ast.tempExprProps.emplace_back(tid, scopeID,
+                                               ast.ast.nameCnt, false);
             bumpIdentifier(ast.ast.nameCnt);
             break;
         }
@@ -287,16 +279,8 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
                 const auto newVarName = ast.ast.nameCnt;
                 bumpIdentifier(ast.ast.nameCnt);
                 curr.fields[0] = {newVarName};
-                // Register the new variable in the AST type system so
-                // subsequent generate_line calls can find it by type.
-                auto &scope_ = ast.ast.scopes[scopeID];
-                scope_.variables.push_back(
-                    static_cast<VarID>(ast.ast.variables.size()));
-                ast.ast.variables.emplace_back(
-                    NO_MODULE, ast.ast.classProps[NOT_UNDER_CLASS].size(),
-                    NOT_UNDER_CLASS);
-                ast.ast.classProps[NOT_UNDER_CLASS].emplace_back(
-                    sig.returnType, scopeID, newVarName, false);
+                ast.ast.tempExprProps.emplace_back(sig.returnType, scopeID,
+                                                   newVarName, false);
                 globalVars.insert(newVarName);
             }
 
@@ -589,16 +573,8 @@ int FuzzingAST::generate_line(ASTNode &node, ASTData &ast, BuiltinContext &ctx,
 
             // Create result variable (type=object, will be updated by runtime)
             curr.fields = {{ast.ast.nameCnt}, {*containerName}, {*indexName}};
-            {
-                auto &scope_ = ast.ast.scopes[scopeID];
-                scope_.variables.push_back(
-                    static_cast<VarID>(ast.ast.variables.size()));
-                ast.ast.variables.emplace_back(
-                    NO_MODULE, ast.ast.classProps[NOT_UNDER_CLASS].size(),
-                    NOT_UNDER_CLASS);
-                ast.ast.classProps[NOT_UNDER_CLASS].emplace_back(
-                    0, scopeID, ast.ast.nameCnt, false);
-            }
+            ast.ast.tempExprProps.emplace_back(0, scopeID, ast.ast.nameCnt,
+                                               false);
             globalVars.insert(ast.ast.nameCnt);
             bumpIdentifier(ast.ast.nameCnt);
             break;
@@ -659,6 +635,7 @@ int FuzzingAST::generate_execution_block(ASTData &ast, const ScopeID &scopeID,
             MutationState::STATE_OK) {
             ast.ast.expressions.pop_back();
         } else {
+            ast.ast.expressions[nodeId] = std::move(node);
             scope.retNodeID = nodeId;
         }
     }

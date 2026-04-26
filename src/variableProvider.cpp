@@ -39,6 +39,15 @@ void BuiltinContext::updateVars(const AST &ast) {
         }
     }
 
+    for (size_t j = 0; j < ast.tempExprProps.size(); ++j) {
+        const auto &pi = ast.tempExprProps[j];
+        if (pi.scope < 0 || static_cast<size_t>(pi.scope) >= n)
+            continue;
+        auto &index = scopeProviders[pi.scope].selectIndex(pi);
+        index[pi.type].emplace_back(TEMP_EXPR_MODULE_ID, j, NOT_UNDER_CLASS);
+        index[0].emplace_back(TEMP_EXPR_MODULE_ID, j, NOT_UNDER_CLASS);
+    }
+
     for (size_t i = 0; i < n; ++i) {
         for (auto mid : ast.scopes[i].importedModules) {
             for (const auto &kv : modulesProps[mid]) {
