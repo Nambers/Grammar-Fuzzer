@@ -14,6 +14,12 @@ BUILD_PATH="$SCRIPT_DIR/build"
 USING_CORE=$(( $(nproc) - 1 ))
 CMAKE_ARG=""
 
+if [ ! -f builtins.json ]; then
+    cmake -B "$BUILD_PATH" "$SCRIPT_DIR"
+    cmake --build "$BUILD_PATH" -j "$USING_CORE" --target LuaBuiltinsProbe
+    "$BUILD_PATH/LuaBuiltinsProbe" builtins.json "$TGT_DIR/builtins_gen.lua"
+fi
+
 while [ "$1" != "" ]; do
     case $1 in
     -dd | --disable-debug-output)
@@ -36,8 +42,5 @@ export CXX=clang++
 echo "[build_lua] Building luaFuzzer..."
 cmake -B "$BUILD_PATH" $CMAKE_ARG "$SCRIPT_DIR"
 cmake --build "$BUILD_PATH" -j "$USING_CORE" --target luaFuzzer LuaTest LuaConvert LuaCov
-
-echo "[build_lua] Generating builtins.json..."
-lua "$TGT_DIR/builtins_gen.lua" builtins.json
 
 echo "[build_lua] Done."

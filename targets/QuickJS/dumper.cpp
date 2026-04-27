@@ -2,6 +2,16 @@
 
 using namespace FuzzingAST;
 
+static const char *mapJSTypeName(const std::string &name) {
+    if (name == "array") return "Array";
+    if (name == "number") return "Number";
+    if (name == "string") return "String";
+    if (name == "boolean") return "Boolean";
+    if (name == "object") return "Object";
+    if (name == "function") return "Function";
+    return nullptr;
+}
+
 static const char *mapBinaryOp(const std::string &op) {
     if (op == "//")
         return "/";
@@ -30,6 +40,8 @@ static void valueToJS(std::ostringstream &out, const ASTNodeValue &val,
             out << "[]";
         else if (s == "object()")
             out << "({})";
+        else if (const char *mapped = mapJSTypeName(s))
+            out << mapped;
         else
             out << s;
     } else if (std::holds_alternative<int64_t>(val.val)) {

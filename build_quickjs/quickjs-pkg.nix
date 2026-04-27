@@ -4,13 +4,16 @@ let
     cmake = pkgs.cmake;
     doCheck = false;
   };
+  quick_js = pkgs.fetchzip {
+    url = "https://bellard.org/quickjs/quickjs-2025-09-13-2.tar.xz";
+    sha256 = "sha256-yMKkk24+t7nCHtM9Uw6ZcNOLrRVKGWyQ6PQFdSUqobI=";
+  };
 in pkgs.mkShell {
   buildInputs = with pkgs; [
     llvm
     clang
     cmake
     ninja
-    nodejs
     mold-wrapped
     nlohmann_json_custom
     ftxui
@@ -22,5 +25,6 @@ in pkgs.mkShell {
     export CXX="${pkgs.clang}/bin/clang++";
     export NIX_ENFORCE_NO_NATIVE=0;
     export QUICKJS_SHELL=1;
+    export QUICKJS_SRC="${quick_js}";
   '';
 }

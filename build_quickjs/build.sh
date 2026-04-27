@@ -14,7 +14,10 @@ USING_CORE=$(( $(nproc) - 1 ))
 CMAKE_ARG=""
 
 if [ ! -f builtins.json ]; then
-    node "$TGT_DIR/builtins_gen.js" builtins.json
+    # Build the probe binary first (no sanitizers, so it runs cleanly)
+    cmake -B "$BUILD_PATH" "$SCRIPT_DIR"
+    cmake --build "$BUILD_PATH" -j "$USING_CORE" --target QuickJSBuiltinsProbe
+    "$BUILD_PATH/QuickJSBuiltinsProbe" builtins.json "$TGT_DIR/builtins_gen.js"
 fi
 
 while [ "$1" != "" ]; do

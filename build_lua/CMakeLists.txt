@@ -28,8 +28,8 @@ file(GLOB_RECURSE SOURCE_FILES ${SRC_DIR}/*.cpp)
 include(FetchContent)
 FetchContent_Declare(
     lua_src
-    URL https://www.lua.org/ftp/lua-5.5.0.tar.gz
-    URL_HASH SHA256=57ccc32bbbd005cab75bcc52444052535af691789dba2b9016d5c50640d68b3d
+    # URL https://www.lua.org/ftp/lua-5.5.0.tar.gz
+    SOURCE_DIR $ENV{LUA_SRC}
 )
 FetchContent_MakeAvailable(lua_src)
 
@@ -156,3 +156,8 @@ target_include_directories(LuaConvert PRIVATE
 )
 target_link_libraries(LuaConvert PRIVATE lua_inst nlohmann_json::nlohmann_json)
 target_link_options(LuaConvert PRIVATE -fsanitize=address,undefined -flto -fuse-ld=mold)
+
+add_executable(LuaBuiltinsProbe ${TGT_DIR}/builtins_probe.cpp)
+target_include_directories(LuaBuiltinsProbe PRIVATE "${lua_src_SOURCE_DIR}/src")
+target_link_libraries(LuaBuiltinsProbe PRIVATE lua_inst)
+target_link_options(LuaBuiltinsProbe PRIVATE -fsanitize=address,undefined -flto -fuse-ld=mold)

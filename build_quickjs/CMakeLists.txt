@@ -15,8 +15,8 @@ set(TGT_DIR "${ROOT_DIR}/targets/QuickJS")
 find_package(nlohmann_json 3.12.0 REQUIRED)
 find_package(ftxui REQUIRED)
 
-OPTION(DISABLE_DEBUG_OUTPUT OFF)
-OPTION(DISABLE_INFO_OUTPUT OFF)
+option(DISABLE_DEBUG_OUTPUT OFF)
+option(DISABLE_INFO_OUTPUT OFF)
 if(DISABLE_DEBUG_OUTPUT)
     add_compile_definitions(DISABLE_DEBUG_OUTPUT)
 endif()
@@ -27,11 +27,44 @@ endif()
 file(GLOB_RECURSE SOURCE_FILES ${SRC_DIR}/*.cpp)
 
 include(FetchContent)
-FetchContent_Declare(
+fetchcontent_declare(
     quickjs_src
-    URL https://bellard.org/quickjs/quickjs-2025-09-13-2.tar.xz
+    # URL https://bellard.org/quickjs/quickjs-2025-09-13-2.tar.xz
+    SOURCE_DIR $ENV{QUICKJS_SRC}
 )
-FetchContent_MakeAvailable(quickjs_src)
+fetchcontent_makeavailable(quickjs_src)
+
+add_library(QuickJSSystemLibs INTERFACE)
+target_link_libraries(QuickJSSystemLibs INTERFACE m dl pthread)
+
+add_library(QuickJSLibCommon INTERFACE)
+target_include_directories(QuickJSLibCommon INTERFACE "${quickjs_src_SOURCE_DIR}")
+target_compile_definitions(QuickJSLibCommon INTERFACE
+    _GNU_SOURCE
+    CONFIG_VERSION="2025-09-13-2"
+)
+
+add_library(QuickJSToolCommon INTERFACE)
+target_include_directories(QuickJSToolCommon INTERFACE
+    "${quickjs_src_SOURCE_DIR}"
+    ${SRC_DIR}
+)
+target_link_libraries(QuickJSToolCommon INTERFACE
+    nlohmann_json::nlohmann_json
+)
+
+add_library(QuickJSLinkCommon INTERFACE)
+target_link_options(QuickJSLinkCommon INTERFACE
+    -fsanitize=address,undefined
+    -flto
+    -fuse-ld=mold
+)
+
+add_library(QuickJSCovLinkOptions INTERFACE)
+target_link_options(QuickJSCovLinkOptions INTERFACE
+    -fprofile-instr-generate
+    -fcoverage-mapping
+)
 
 set(QUICKJS_C_SOURCES
     ${quickjs_src_SOURCE_DIR}/quickjs.c
@@ -42,28 +75,24 @@ set(QUICKJS_C_SOURCES
 )
 
 add_library(quickjs_inst STATIC ${QUICKJS_C_SOURCES})
-target_include_directories(quickjs_inst PUBLIC "${quickjs_src_SOURCE_DIR}")
-target_compile_definitions(quickjs_inst PRIVATE
-    _GNU_SOURCE
-    CONFIG_VERSION=\"2025-09-13-2\"
+target_link_libraries(quickjs_inst
+    PRIVATE QuickJSLibCommon
+    PUBLIC QuickJSSystemLibs
 )
 target_compile_options(quickjs_inst PRIVATE
     -g -fno-omit-frame-pointer -O2
     -fsanitize-coverage=edge,trace-pc-guard
 )
-target_link_libraries(quickjs_inst PRIVATE m dl pthread)
 
 add_library(quickjs_cov STATIC ${QUICKJS_C_SOURCES})
-target_include_directories(quickjs_cov PUBLIC "${quickjs_src_SOURCE_DIR}")
-target_compile_definitions(quickjs_cov PRIVATE
-    _GNU_SOURCE
-    CONFIG_VERSION=\"2025-09-13-2\"
+target_link_libraries(quickjs_cov
+    PRIVATE QuickJSLibCommon
+    PUBLIC QuickJSSystemLibs
 )
 target_compile_options(quickjs_cov PRIVATE
     -g -fno-omit-frame-pointer -O1
     -fprofile-instr-generate -fcoverage-mapping
 )
-target_link_libraries(quickjs_cov PRIVATE m dl pthread)
 
 set(TARGET_SOURCE
     ${TGT_DIR}/dumper.cpp
@@ -75,18 +104,13 @@ add_library(QuickJSTargetOption INTERFACE)
 target_compile_options(QuickJSTargetOption INTERFACE
     -fsanitize=address,undefined -g -fno-omit-frame-pointer -O2
 )
-target_link_libraries(QuickJSTargetOption INTERFACE quickjs_inst m dl pthread)
+target_link_libraries(QuickJSTargetOption INTERFACE quickjs_inst QuickJSLinkCommon)
 target_link_options(QuickJSTargetOption INTERFACE
-    -fsanitize=address,undefined -flto
-    -fsanitize-coverage=edge,trace-pc-guard -fuse-ld=mold
+    -fsanitize-coverage=edge,trace-pc-guard
 )
 
 add_library(QuickJSTarget OBJECT ${TARGET_SOURCE})
-target_include_directories(QuickJSTarget PRIVATE
-    "${quickjs_src_SOURCE_DIR}"
-    ${SRC_DIR}
-)
-target_link_libraries(QuickJSTarget PRIVATE nlohmann_json::nlohmann_json quickjs_inst)
+target_link_libraries(QuickJSTarget PRIVATE QuickJSToolCommon quickjs_inst)
 
 add_executable(quickjsFuzzer
     ${SOURCE_FILES}
@@ -111,15 +135,7 @@ set(COV_SOURCE
     ${TGT_DIR}/builtins.cpp
 )
 add_executable(QuickJSCov ${COV_SOURCE})
-target_include_directories(QuickJSCov PRIVATE
-    "${quickjs_src_SOURCE_DIR}"
-    ${SRC_DIR}
-)
-target_link_libraries(QuickJSCov PRIVATE quickjs_cov nlohmann_json::nlohmann_json m dl pthread)
-target_link_options(QuickJSCov PRIVATE
-    -fsanitize=address,undefined
-    -fprofile-instr-generate -fcoverage-mapping -flto -fuse-ld=mold
-)
+target_link_libraries(QuickJSCov PRIVATE QuickJSToolCommon quickjs_cov QuickJSLinkCommon QuickJSCovLinkOptions)
 
 set(TEST_SOURCE
     ${SRC_DIR}/ast.cpp
@@ -128,13 +144,8 @@ set(TEST_SOURCE
     ${TGT_DIR}/builtins.cpp
 )
 add_executable(QuickJSTest ${TEST_SOURCE})
-target_include_directories(QuickJSTest PRIVATE
-    "${quickjs_src_SOURCE_DIR}"
-    ${SRC_DIR}
-)
-target_link_libraries(QuickJSTest PRIVATE quickjs_inst nlohmann_json::nlohmann_json m dl pthread)
+target_link_libraries(QuickJSTest PRIVATE QuickJSToolCommon quickjs_inst QuickJSLinkCommon)
 target_compile_options(QuickJSTest PRIVATE -g -fsanitize=address,undefined)
-target_link_options(QuickJSTest PRIVATE -fsanitize=address,undefined -flto -fuse-ld=mold)
 
 set(CONVERT_SOURCE
     ${SRC_DIR}/ast.cpp
@@ -143,9 +154,8 @@ set(CONVERT_SOURCE
     ${TGT_DIR}/builtins.cpp
 )
 add_executable(QuickJSConvert ${CONVERT_SOURCE})
-target_include_directories(QuickJSConvert PRIVATE
-    "${quickjs_src_SOURCE_DIR}"
-    ${SRC_DIR}
-)
-target_link_libraries(QuickJSConvert PRIVATE quickjs_inst nlohmann_json::nlohmann_json m dl pthread)
-target_link_options(QuickJSConvert PRIVATE -fsanitize=address,undefined -flto -fuse-ld=mold)
+target_link_libraries(QuickJSConvert PRIVATE QuickJSToolCommon quickjs_inst QuickJSLinkCommon)
+
+add_executable(QuickJSBuiltinsProbe ${TGT_DIR}/builtins_probe.cpp)
+target_include_directories(QuickJSBuiltinsProbe PRIVATE "${quickjs_src_SOURCE_DIR}")
+target_link_libraries(QuickJSBuiltinsProbe PRIVATE quickjs_inst QuickJSLinkCommon)
