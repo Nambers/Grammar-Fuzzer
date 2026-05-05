@@ -6,7 +6,9 @@
 # and writes one CSV row per snapshot.
 #
 # Output: cov_time.csv
-#   ms, func_pct, line_pct, branch_pct
+#   ms, func_covered, func_total, func_pct,
+#       line_covered, line_total, line_pct,
+#       branch_covered, branch_total, branch_pct
 
 set -euo pipefail
 
@@ -35,7 +37,17 @@ LLVM_PROFILE_FILE="default_%p.profraw" "$BUILD_COV" --time-collect
 # ---------------------------------------------------------------------------
 # Process each snapshot in ms order
 # ---------------------------------------------------------------------------
-echo "ms,func_pct,line_pct,branch_pct" > "$OUTPUT"
+echo "ms,func_covered,func_total,func_pct,line_covered,line_total,line_pct,branch_covered,branch_total,branch_pct" > "$OUTPUT"
+
+extract_metric() {
+    local name="$1"
+    local field="$2"
+    local metric
+
+    metric=$(grep -Eo "\"${name}\":\{\"count\":[0-9]+,\"covered\":[0-9]+(,\"notcovered\":[0-9]+)?,\"percent\":[0-9.]+\}" "$TMP_JSON" \
+             | tail -1)
+    printf '%s\n' "$metric" | sed -E "s/.*\"${field}\":([0-9.]+).*/\1/"
+}
 
 find "$SCRIPT_DIR" -maxdepth 1 -name 'time_*.profraw' -printf '%f\n' \
 | sort -t'_' -k2,2n \
@@ -54,15 +66,22 @@ find "$SCRIPT_DIR" -maxdepth 1 -name 'time_*.profraw' -printf '%f\n' \
 
     # JSON is a single minified line; per-file summaries precede totals,
     # so tail -1 on each pattern gives the totals row.
-    FUNC_PCT=$(grep -o '"functions":{"count":[0-9]*,"covered":[0-9]*,"percent":[0-9.]*}' "$TMP_JSON" \
-               | tail -1 | grep -o '"percent":[0-9.]*' | cut -d: -f2)
-    LINE_PCT=$(grep -o '"lines":{"count":[0-9]*,"covered":[0-9]*,"percent":[0-9.]*}' "$TMP_JSON" \
-               | tail -1 | grep -o '"percent":[0-9.]*' | cut -d: -f2)
-    BRANCH_PCT=$(grep -o '"branches":{"count":[0-9]*,"covered":[0-9]*,"notcovered":[0-9]*,"percent":[0-9.]*}' "$TMP_JSON" \
-                 | tail -1 | grep -o '"percent":[0-9.]*' | cut -d: -f2)
+    FUNC_TOTAL=$(extract_metric functions count)
+    FUNC_COVERED=$(extract_metric functions covered)
+    FUNC_PCT=$(extract_metric functions percent)
+    LINE_TOTAL=$(extract_metric lines count)
+    LINE_COVERED=$(extract_metric lines covered)
+    LINE_PCT=$(extract_metric lines percent)
+    BRANCH_TOTAL=$(extract_metric branches count)
+    BRANCH_COVERED=$(extract_metric branches covered)
+    BRANCH_PCT=$(extract_metric branches percent)
 
-    echo "$MS,$FUNC_PCT,$LINE_PCT,$BRANCH_PCT" >> "$OUTPUT"
-    printf "  ms=%-8s  fn=%s%%  line=%s%%  branch=%s%%\n" "$MS" "$FUNC_PCT" "$LINE_PCT" "$BRANCH_PCT"
+    echo "$MS,$FUNC_COVERED,$FUNC_TOTAL,$FUNC_PCT,$LINE_COVERED,$LINE_TOTAL,$LINE_PCT,$BRANCH_COVERED,$BRANCH_TOTAL,$BRANCH_PCT" >> "$OUTPUT"
+    printf "  ms=%-8s  fn=%s/%s (%s%%)  line=%s/%s (%s%%)  branch=%s/%s (%s%%)\n" \
+        "$MS" \
+        "$FUNC_COVERED" "$FUNC_TOTAL" "$FUNC_PCT" \
+        "$LINE_COVERED" "$LINE_TOTAL" "$LINE_PCT" \
+        "$BRANCH_COVERED" "$BRANCH_TOTAL" "$BRANCH_PCT"
 done
 
 rm -f "$TMP_PROFDATA" "$TMP_JSON"

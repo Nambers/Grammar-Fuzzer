@@ -15,7 +15,7 @@ export PYTHONUNBUFFERED=x
 
 LLVM_PROFILE_FILE="default_%p.profraw" "$BUILD_COV_PATH/CPythonCov"
 
-llvm-profdata merge -sparse $(find ./ -type f -name "*.profraw") $(find ./ -type f -name "*.profdata") -o default.profdata
+llvm-profdata merge -sparse *.profraw *.profdata -o default.profdata
 llvm-cov show "$CPYTHON_LIB/libpython3.14.so.1.0" -instr-profile=default.profdata -o reports
 llvm-cov export --format=text -summary-only "$CPYTHON_LIB/libpython3.14.so.1.0" -instr-profile=default.profdata > cov.json
 # delete all profraw because it's already in default.profdata

@@ -10,3 +10,4 @@ cov.json
 ast_test.json
 *.svg
 *.csv
+baseline_tests
