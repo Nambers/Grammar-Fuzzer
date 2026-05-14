@@ -44,3 +44,18 @@ Syntax aware token/source codes text mutation based fuzzer.
 
 - Reflecta
 - Nautils
+
+## Citation
+
+[arXiv: OverrideFuzz: Semantic-Aware Grammar Fuzzing for Script-Runtime Vulnerabilities](https://arxiv.org/abs/2605.12563)
+```bibtex
+@misc{qiu2026overridefuzzsemanticawaregrammarfuzzing,
+      title={OverrideFuzz: Semantic-Aware Grammar Fuzzing for Script-Runtime Vulnerabilities}, 
+      author={Yiran Qiu},
+      year={2026},
+      eprint={2605.12563},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/2605.12563}, 
+}
+```
